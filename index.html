@@ -71,13 +71,26 @@
     display:flex;
   }
   /* サイドバー */
+  #sidebarWrap{
+    display:flex;
+    flex-shrink:0;
+  }
   #sidebar{
     width:260px;
     flex-shrink:0;
     background:var(--panel);
-    border-right:1px solid var(--border);
     overflow-y:auto;
     padding:12px 8px;
+  }
+  #sidebarResizer{
+    width:6px;
+    flex-shrink:0;
+    cursor:col-resize;
+    background:var(--border);
+    position:relative;
+  }
+  #sidebarResizer:hover, #sidebarResizer.resizing{
+    background:var(--accent);
   }
   .sidebar-toolbar{
     display:flex;
@@ -310,12 +323,15 @@
 </header>
 
 <main>
-  <div id="sidebar">
-    <div class="sidebar-toolbar">
-      <button id="btnNewFolder" title="新しいフォルダを作成">📁+ フォルダ</button>
-      <button id="btnLoad" title="CSVを読み込んでシナリオを追加">📄+ CSV</button>
+  <div id="sidebarWrap">
+    <div id="sidebar">
+      <div class="sidebar-toolbar">
+        <button id="btnNewFolder" title="新しいフォルダを作成">📁+ フォルダ</button>
+        <button id="btnLoad" title="CSVを読み込んでシナリオを追加">📄+ CSV</button>
+      </div>
+      <div id="treeArea"></div>
     </div>
-    <div id="treeArea"></div>
+    <div id="sidebarResizer"></div>
   </div>
 
   <div id="contentArea">
@@ -689,6 +705,7 @@ function buildFolderNodeDOM(id){
     </span>
   `;
   row.querySelector(".label").textContent = f.name;
+  row.title = f.name;
 
   row.addEventListener("click", (e)=>{
     if(e.target.closest("button")) return;
@@ -755,6 +772,7 @@ function buildScenarioNodeDOM(id){
     </span>
   `;
   row.querySelector(".label").textContent = sc.name;
+  row.title = sc.name;
 
   row.addEventListener("click", async (e)=>{
     if(e.target.closest("button")) return;
@@ -922,6 +940,44 @@ document.getElementById("btnClearSearch").addEventListener("click", ()=>{
   document.getElementById("searchInput").value = "";
   runSearch();
 });
+
+// --- サイドバー幅リサイズ ---
+(function initSidebarResizer(){
+  const sidebar = document.getElementById("sidebar");
+  const resizer = document.getElementById("sidebarResizer");
+  const MIN_WIDTH = 160;
+  const MAX_WIDTH = 560;
+
+  const savedWidth = localStorage.getItem("sidebarWidth");
+  if(savedWidth) sidebar.style.width = savedWidth + "px";
+
+  let dragging = false;
+
+  resizer.addEventListener("mousedown", (e)=>{
+    dragging = true;
+    resizer.classList.add("resizing");
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    e.preventDefault();
+  });
+
+  window.addEventListener("mousemove", (e)=>{
+    if(!dragging) return;
+    const wrapRect = document.getElementById("sidebarWrap").getBoundingClientRect();
+    let newWidth = e.clientX - wrapRect.left;
+    newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, newWidth));
+    sidebar.style.width = newWidth + "px";
+  });
+
+  window.addEventListener("mouseup", ()=>{
+    if(!dragging) return;
+    dragging = false;
+    resizer.classList.remove("resizing");
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    localStorage.setItem("sidebarWidth", parseInt(sidebar.style.width, 10));
+  });
+})();
 
 // --- init ---
 (async ()=>{
