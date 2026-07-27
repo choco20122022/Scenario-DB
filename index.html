@@ -896,7 +896,7 @@ function renderScript(){
   const html = ['<div class="script">'];
   for(const l of sc.lines){
     if(l.speaker === ""){
-      html.push(`<div class="line tobira"><span class="label">ト書き:</span><span class="text">${escapeHtml(l.text)}</span></div>`);
+      html.push(`<div class="line tobira"><span class="text">${escapeHtml(l.text)}</span></div>`);
     } else {
       html.push(`<div class="line"><span class="speaker">${escapeHtml(l.speaker)}</span><span class="text">${escapeHtml(l.text)}</span></div>`);
     }
