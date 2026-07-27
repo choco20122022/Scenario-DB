@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>シナリオDB</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#ffffff">
+<style>
+  :root{
+    --bg:#f4f5f7;
+    --panel:#ffffff;
+    --panel2:#eef0f3;
+    --border:#d3d7dd;
+    --text:#1a1d23;
+    --text-dim:#5b6270;
+    --accent:#5b3fa8;
+    --accent-bg:#efe8fb;
+    --accent-dim:#7a5fc0;
+    --tobira:#8a5a00;
+    --tobira-bg:#fdf1dc;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic","Noto Sans JP",-apple-system,"Segoe UI",sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    height:100vh;
+    display:flex;
+    flex-direction:column;
+  }
+  header{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:10px 16px;
+    background:var(--panel);
+    border-bottom:1px solid var(--border);
+    flex-wrap:wrap;
+  }
+  header h1{
+    font-size:16px;
+    margin:0;
+    font-weight:600;
+    color:var(--accent);
+    white-space:nowrap;
+  }
+  select, input[type=text], button{
+    font-family:inherit;
+    font-size:14px;
+    background:var(--panel2);
+    color:var(--text);
+    border:1px solid var(--border);
+    border-radius:6px;
+    padding:7px 10px;
+  }
+  button{
+    cursor:pointer;
+    color:var(--accent);
+    font-weight:600;
+    white-space:nowrap;
+  }
+  button:hover{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.danger{ color:#c62828; }
+  button.danger:hover{ background:#c62828; color:#fff; border-color:#c62828; }
+  #fileInput{ display:none; }
+  main{
+    flex:1;
+    overflow:hidden;
+    display:flex;
+  }
+  /* サイドバー */
+  #sidebar{
+    width:260px;
+    flex-shrink:0;
+    background:var(--panel);
+    border-right:1px solid var(--border);
+    overflow-y:auto;
+    padding:12px 8px;
+  }
+  .sidebar-toolbar{
+    display:flex;
+    gap:6px;
+    margin-bottom:10px;
+    padding:0 4px;
+  }
+  .sidebar-toolbar button{
+    flex:1;
+    font-size:12px;
+    padding:6px 4px;
+  }
+  .tree-node{ user-select:none; }
+  .tree-row{
+    display:flex;
+    align-items:center;
+    gap:4px;
+    padding:6px 8px;
+    border-radius:6px;
+    cursor:pointer;
+    font-size:14px;
+    color:var(--text);
+  }
+  .tree-row:hover{ background:var(--panel2); }
+  .tree-row.selected{
+    background:var(--accent-bg);
+    color:var(--accent);
+    font-weight:700;
+  }
+  .tree-row.dragover{
+    outline:2px dashed var(--accent);
+    outline-offset:-2px;
+  }
+  .tree-row .caret{
+    width:14px;
+    flex-shrink:0;
+    text-align:center;
+    color:var(--text-dim);
+    font-size:11px;
+  }
+  .tree-row .icon{
+    flex-shrink:0;
+    font-size:14px;
+  }
+  .tree-row .label{
+    flex:1;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .tree-row .row-actions{
+    display:none;
+    gap:2px;
+  }
+  .tree-row:hover .row-actions{ display:flex; }
+  .tree-row .row-actions button{
+    font-size:11px;
+    padding:2px 5px;
+    border:none;
+    background:transparent;
+    color:var(--text-dim);
+  }
+  .tree-row .row-actions button:hover{
+    background:var(--border);
+    color:var(--text);
+  }
+  .tree-children{
+    margin-left:18px;
+    border-left:1px solid var(--border);
+    padding-left:4px;
+  }
+  .tree-empty{
+    color:var(--text-dim);
+    font-size:13px;
+    padding:10px;
+    text-align:center;
+  }
+  #contentArea{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  }
+  .tabs{
+    display:flex;
+    gap:6px;
+    padding:8px 16px 0;
+    background:var(--panel);
+    border-bottom:1px solid var(--border);
+  }
+  .tab{
+    padding:8px 16px;
+    cursor:pointer;
+    color:var(--text-dim);
+    font-weight:600;
+    border-bottom:3px solid transparent;
+  }
+  .tab.active{
+    color:var(--accent);
+    border-bottom:3px solid var(--accent);
+  }
+  .view{
+    display:none;
+    flex:1;
+    overflow-y:auto;
+    padding:24px;
+  }
+  .view.active{ display:block; }
+  .empty-state{
+    color:var(--text-dim);
+    text-align:center;
+    margin-top:80px;
+    line-height:2;
+  }
+  /* 全体表示 */
+  .script{
+    max-width:720px;
+    margin:0 auto;
+    line-height:1.9;
+    font-size:17px;
+  }
+  .line{
+    margin-bottom:22px;
+  }
+  .line .speaker{
+    display:block;
+    font-size:13px;
+    font-weight:700;
+    color:var(--accent);
+    margin-bottom:4px;
+    letter-spacing:0.03em;
+  }
+  .line .text{
+    white-space:pre-wrap;
+    color:var(--text);
+  }
+  .line.tobira{
+    font-style:normal;
+    color:var(--tobira);
+    background:var(--tobira-bg);
+    padding:10px 14px;
+    border-radius:6px;
+    opacity:1;
+  }
+  .line.tobira .label{
+    font-size:12px;
+    font-weight:700;
+    font-style:normal;
+    color:var(--tobira);
+    opacity:1;
+    margin-right:6px;
+  }
+  .line.highlight .text{
+    background:var(--accent-bg);
+    border-radius:4px;
+    padding:2px 6px;
+  }
+  /* 検索表示 */
+  .search-bar{
+    display:flex;
+    gap:8px;
+    max-width:720px;
+    margin:0 auto 20px;
+  }
+  .search-bar input{
+    flex:1;
+  }
+  .search-results{
+    max-width:720px;
+    margin:0 auto;
+  }
+  .speaker-chip{
+    display:inline-block;
+    padding:5px 12px;
+    margin:2px 4px 10px 0;
+    background:var(--panel2);
+    border:1px solid var(--border);
+    border-radius:20px;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+    color:var(--text-dim);
+  }
+  .speaker-chip.active{
+    background:var(--accent);
+    color:#fff;
+    border-color:var(--accent);
+  }
+  .result-line{
+    padding:12px 16px;
+    margin-bottom:10px;
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-left:4px solid var(--accent);
+    border-radius:6px;
+    box-shadow:0 1px 2px rgba(0,0,0,0.04);
+  }
+  .result-line .speaker{
+    color:var(--accent);
+    font-weight:700;
+    font-size:13px;
+  }
+  .result-line .text{
+    color:var(--text);
+  }
+  .result-line .idx{
+    font-size:11px;
+    color:var(--text-dim);
+    margin-right:8px;
+  }
+  .result-count{
+    color:var(--text-dim);
+    font-size:13px;
+    font-weight:600;
+    margin-bottom:14px;
+  }
+  ::-webkit-scrollbar{ width:10px; }
+  ::-webkit-scrollbar-thumb{ background:var(--border); border-radius:5px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>シナリオDB</h1>
+  <input type="file" id="fileInput" accept=".csv">
+  <span style="flex:1"></span>
+  <button id="btnOpenDB" title="既存のdb.jsonを開く">DBファイルを開く</button>
+  <button id="btnNewDB" title="新しくdb.jsonを作成する">新規DB作成</button>
+  <span id="dbStatus" style="font-size:13px;font-weight:600;color:var(--text-dim);white-space:nowrap;"></span>
+</header>
+
+<main>
+  <div id="sidebar">
+    <div class="sidebar-toolbar">
+      <button id="btnNewFolder" title="新しいフォルダを作成">📁+ フォルダ</button>
+      <button id="btnLoad" title="CSVを読み込んでシナリオを追加">📄+ CSV</button>
+    </div>
+    <div id="treeArea"></div>
+  </div>
+
+  <div id="contentArea">
+    <div class="tabs">
+      <div class="tab active" data-view="viewScript">全体表示</div>
+      <div class="tab" data-view="viewSearch">話者検索</div>
+    </div>
+    <div id="viewScript" class="view active">
+      <div id="scriptContent"><div class="empty-state">左のサイドバーからシナリオを選ぶか、<br>「CSV」ボタンで新しいシナリオを追加してください。</div></div>
+    </div>
+    <div id="viewSearch" class="view">
+      <div class="search-bar">
+        <input type="text" id="searchInput" placeholder="話者名を入力（部分一致）">
+        <button id="btnClearSearch">クリア</button>
+      </div>
+      <div id="chipArea"></div>
+      <div id="searchResults" class="search-results"></div>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script>
+let db = { scenarios: {}, folders: {}, currentId: null };
+// scenarios: { id: { name, lines: [{speaker, text}], parentId } }
+// folders:   { id: { name, parentId, expanded } }
+// parentId === null はルート直下
+
+function migrateDB(){
+  if(!db.folders) db.folders = {};
+  for(const id of Object.keys(db.scenarios)){
+    if(db.scenarios[id].parentId === undefined) db.scenarios[id].parentId = null;
+  }
+}
+
+let dbFileHandle = null; // FileSystemFileHandle for db.json
+const HANDLE_DB_NAME = "scenarioDB_handles";
+const HANDLE_STORE = "handles";
+const HANDLE_KEY = "dbFileHandle";
+
+function idbOpen(){
+  return new Promise((resolve, reject)=>{
+    const req = indexedDB.open(HANDLE_DB_NAME, 1);
+    req.onupgradeneeded = ()=>{ req.result.createObjectStore(HANDLE_STORE); };
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function idbSetHandle(handle){
+  const idb = await idbOpen();
+  return new Promise((resolve, reject)=>{
+    const tx = idb.transaction(HANDLE_STORE, "readwrite");
+    tx.objectStore(HANDLE_STORE).put(handle, HANDLE_KEY);
+    tx.oncomplete = ()=>resolve();
+    tx.onerror = ()=>reject(tx.error);
+  });
+}
+async function idbGetHandle(){
+  const idb = await idbOpen();
+  return new Promise((resolve, reject)=>{
+    const tx = idb.transaction(HANDLE_STORE, "readonly");
+    const req = tx.objectStore(HANDLE_STORE).get(HANDLE_KEY);
+    req.onsuccess = ()=>resolve(req.result || null);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+
+function setDbStatus(msg, color){
+  const el = document.getElementById("dbStatus");
+  el.textContent = msg;
+  el.style.color = color || "var(--text-dim)";
+}
+
+async function ensurePermission(handle){
+  const opts = { mode: "readwrite" };
+  if((await handle.queryPermission(opts)) === "granted") return true;
+  if((await handle.requestPermission(opts)) === "granted") return true;
+  return false;
+}
+
+async function openExistingDB(){
+  if(!window.showOpenFilePicker){
+    alert("お使いのブラウザはファイル直接保存に対応していません。Chrome または Edge をご利用ください。");
+    return;
+  }
+  try{
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: "シナリオDB", accept: { "application/json": [".json"] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    if(!(await ensurePermission(handle))) return;
+    const file = await handle.getFile();
+    const text = await file.text();
+    db = JSON.parse(text);
+    migrateDB();
+    dbFileHandle = handle;
+    await idbSetHandle(handle);
+    setDbStatus("接続中: " + handle.name);
+    renderTree();
+    renderAll();
+  }catch(e){
+    if(e.name !== "AbortError") console.error(e);
+  }
+}
+
+async function createNewDB(){
+  if(!window.showSaveFilePicker){
+    alert("お使いのブラウザはファイル直接保存に対応していません。Chrome または Edge をご利用ください。");
+    return;
+  }
+  try{
+    const handle = await window.showSaveFilePicker({
+      suggestedName: "db.json",
+      types: [{ description: "シナリオDB", accept: { "application/json": [".json"] } }]
+    });
+    if(!(await ensurePermission(handle))) return;
+    db = { scenarios: {}, folders: {}, currentId: null };
+    dbFileHandle = handle;
+    await idbSetHandle(handle);
+    await saveDB();
+    setDbStatus("接続中: " + handle.name);
+    renderTree();
+    renderAll();
+  }catch(e){
+    if(e.name !== "AbortError") console.error(e);
+  }
+}
+
+async function tryReconnect(){
+  try{
+    const handle = await idbGetHandle();
+    if(!handle) return false;
+    if((await handle.queryPermission({mode:"readwrite"})) !== "granted"){
+      setDbStatus("前回のDBファイルへの再接続には許可が必要です →「DBファイルを開く」で選択し直してください");
+      return false;
+    }
+    const file = await handle.getFile();
+    const text = await file.text();
+    db = JSON.parse(text);
+    migrateDB();
+    dbFileHandle = handle;
+    setDbStatus("接続中: " + handle.name);
+    return true;
+  }catch(e){
+    console.error(e);
+    return false;
+  }
+}
+
+let dbStatusResetTimer = null;
+
+async function saveDB(){
+  if(!dbFileHandle){
+    setDbStatus("未保存（右上の「新規DB作成」または「DBファイルを開く」でファイルに接続してください）");
+    return;
+  }
+  try{
+    const writable = await dbFileHandle.createWritable();
+    await writable.write(JSON.stringify(db, null, 2));
+    await writable.close();
+    const savedAt = new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    setDbStatus(`✓ 保存しました（${savedAt}） - ${dbFileHandle.name}`, "#1e7d32");
+    if(dbStatusResetTimer) clearTimeout(dbStatusResetTimer);
+    dbStatusResetTimer = setTimeout(()=>{
+      setDbStatus("接続中: " + dbFileHandle.name);
+    }, 3000);
+  }catch(e){
+    console.error(e);
+    setDbStatus("✗ 保存に失敗しました: " + e.message, "#c62828");
+    alert("保存に失敗しました: " + e.message);
+  }
+}
+
+function decodeCSVBuffer(buffer){
+  // UTF-8 BOM チェック
+  const bytes = new Uint8Array(buffer);
+  if(bytes.length >= 3 && bytes[0]===0xEF && bytes[1]===0xBB && bytes[2]===0xBF){
+    return new TextDecoder("utf-8").decode(buffer);
+  }
+  // まずUTF-8として厳格デコードを試み、失敗（不正バイト列）ならShift_JISとして読む
+  try{
+    const strict = new TextDecoder("utf-8", { fatal: true });
+    return strict.decode(buffer);
+  }catch(e){
+    try{
+      return new TextDecoder("shift_jis").decode(buffer);
+    }catch(e2){
+      // 最終手段：文字化けを許容してUTF-8で返す
+      return new TextDecoder("utf-8").decode(buffer);
+    }
+  }
+}
+
+function parseCSV(text){
+  const parsed = Papa.parse(text, { skipEmptyLines: false });
+  const rows = parsed.data;
+  const lines = [];
+  for(const row of rows){
+    if(!row || row.length === 0) continue;
+    const speaker = (row[0] || "").trim();
+    const dialogue = (row[1] || "").trim();
+    // ヘッダー行や完全空行はスキップ
+    if(speaker === "" && dialogue === "") continue;
+    if(speaker === "話者" && dialogue === "台詞") continue;
+    lines.push({ speaker, text: dialogue });
+  }
+  return lines;
+}
+
+async function addScenario(name, lines, parentId){
+  const id = "s_" + Date.now() + "_" + Math.random().toString(36).slice(2,7);
+  db.scenarios[id] = { name, lines, parentId: parentId || null };
+  db.currentId = id;
+  await saveDB();
+  renderTree();
+  renderAll();
+}
+
+function currentScenario(){
+  return db.currentId ? db.scenarios[db.currentId] : null;
+}
+
+// ---- フォルダ/ツリー関連 ----
+let currentTargetFolderId = null; // 「CSV追加」「新規フォルダ」がどこに作られるか
+
+function genId(prefix){
+  return prefix + "_" + Date.now() + "_" + Math.random().toString(36).slice(2,7);
+}
+
+async function createFolder(parentId){
+  const name = prompt("新しいフォルダの名前を入力してください", "新しいフォルダ");
+  if(!name) return;
+  const id = genId("f");
+  db.folders[id] = { name, parentId: parentId || null, expanded: true };
+  await saveDB();
+  renderTree();
+}
+
+async function renameFolder(id){
+  const f = db.folders[id];
+  if(!f) return;
+  const name = prompt("新しい名前を入力してください", f.name);
+  if(name){
+    f.name = name;
+    await saveDB();
+    renderTree();
+  }
+}
+
+function folderHasContents(id){
+  const hasSub = Object.values(db.folders).some(f=>f.parentId===id);
+  const hasScenario = Object.values(db.scenarios).some(s=>s.parentId===id);
+  return hasSub || hasScenario;
+}
+
+async function deleteFolder(id){
+  const f = db.folders[id];
+  if(!f) return;
+  if(folderHasContents(id)){
+    alert("フォルダの中身が空でないと削除できません。先に中のフォルダ・シナリオを移動または削除してください。");
+    return;
+  }
+  if(!confirm(`フォルダ「${f.name}」を削除します。よろしいですか？`)) return;
+  delete db.folders[id];
+  await saveDB();
+  renderTree();
+}
+
+async function renameScenario(id){
+  const sc = db.scenarios[id];
+  if(!sc) return;
+  const name = prompt("新しい名前を入力してください", sc.name);
+  if(name){
+    sc.name = name;
+    await saveDB();
+    renderTree();
+  }
+}
+
+async function deleteScenario(id){
+  const sc = db.scenarios[id];
+  if(!sc) return;
+  if(!confirm(`「${sc.name}」を削除します。よろしいですか？`)) return;
+  delete db.scenarios[id];
+  if(db.currentId === id) db.currentId = null;
+  await saveDB();
+  renderTree();
+  renderAll();
+}
+
+async function moveScenarioToFolder(scenarioId, folderId){
+  const sc = db.scenarios[scenarioId];
+  if(!sc) return;
+  sc.parentId = folderId || null;
+  await saveDB();
+  renderTree();
+}
+
+async function moveFolderToFolder(folderId, targetFolderId){
+  if(folderId === targetFolderId) return;
+  // 自分の子孫への移動は禁止（循環防止）
+  let cur = targetFolderId;
+  while(cur){
+    if(cur === folderId) { alert("フォルダを自分自身の中には移動できません。"); return; }
+    cur = db.folders[cur] ? db.folders[cur].parentId : null;
+  }
+  db.folders[folderId].parentId = targetFolderId || null;
+  await saveDB();
+  renderTree();
+}
+
+function renderTree(){
+  const area = document.getElementById("treeArea");
+  const rootFolders = Object.keys(db.folders).filter(id=>db.folders[id].parentId===null);
+  const rootScenarios = Object.keys(db.scenarios).filter(id=>db.scenarios[id].parentId===null);
+
+  if(rootFolders.length === 0 && rootScenarios.length === 0 && Object.keys(db.scenarios).length === 0){
+    area.innerHTML = '<div class="tree-empty">まだシナリオがありません。<br>「CSV」ボタンから追加してください。</div>';
+    return;
+  }
+
+  area.innerHTML = "";
+  area.appendChild(buildFolderChildrenDOM(null));
+
+  // ルート自体へのドロップ（トップレベルへ戻す）を許可
+  area.addEventListener("dragover", (e)=>{ e.preventDefault(); });
+  area.addEventListener("drop", async (e)=>{
+    if(e.target !== area) return;
+    e.preventDefault();
+    const data = e.dataTransfer.getData("text/plain");
+    if(!data) return;
+    const [type, id] = data.split(":");
+    if(type === "scenario") await moveScenarioToFolder(id, null);
+    if(type === "folder") await moveFolderToFolder(id, null);
+  });
+}
+
+function buildFolderChildrenDOM(parentId){
+  const wrapper = document.createElement("div");
+  const folderIds = Object.keys(db.folders).filter(id=>db.folders[id].parentId===parentId)
+    .sort((a,b)=>db.folders[a].name.localeCompare(db.folders[b].name,'ja'));
+  const scenarioIds = Object.keys(db.scenarios).filter(id=>db.scenarios[id].parentId===parentId)
+    .sort((a,b)=>db.scenarios[a].name.localeCompare(db.scenarios[b].name,'ja'));
+
+  for(const fid of folderIds){
+    wrapper.appendChild(buildFolderNodeDOM(fid));
+  }
+  for(const sid of scenarioIds){
+    wrapper.appendChild(buildScenarioNodeDOM(sid));
+  }
+  return wrapper;
+}
+
+function buildFolderNodeDOM(id){
+  const f = db.folders[id];
+  const node = document.createElement("div");
+  node.className = "tree-node";
+
+  const row = document.createElement("div");
+  row.className = "tree-row";
+  row.draggable = true;
+  row.innerHTML = `
+    <span class="caret">${f.expanded ? "▾" : "▸"}</span>
+    <span class="icon">📁</span>
+    <span class="label"></span>
+    <span class="row-actions">
+      <button data-act="newsub" title="サブフォルダ作成">📁+</button>
+      <button data-act="rename" title="名前変更">✎</button>
+      <button data-act="delete" title="削除">🗑</button>
+    </span>
+  `;
+  row.querySelector(".label").textContent = f.name;
+
+  row.addEventListener("click", (e)=>{
+    if(e.target.closest("button")) return;
+    f.expanded = !f.expanded;
+    renderTree();
+  });
+
+  row.querySelector('[data-act="newsub"]').addEventListener("click", async (e)=>{
+    e.stopPropagation();
+    await createFolder(id);
+  });
+  row.querySelector('[data-act="rename"]').addEventListener("click", async (e)=>{
+    e.stopPropagation();
+    await renameFolder(id);
+  });
+  row.querySelector('[data-act="delete"]').addEventListener("click", async (e)=>{
+    e.stopPropagation();
+    await deleteFolder(id);
+  });
+
+  // ドラッグ元（フォルダ自体の移動）
+  row.addEventListener("dragstart", (e)=>{
+    e.dataTransfer.setData("text/plain", `folder:${id}`);
+    e.stopPropagation();
+  });
+  // ドロップ先（他フォルダ・シナリオを受け入れる）
+  row.addEventListener("dragover", (e)=>{ e.preventDefault(); row.classList.add("dragover"); });
+  row.addEventListener("dragleave", ()=>{ row.classList.remove("dragover"); });
+  row.addEventListener("drop", async (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    row.classList.remove("dragover");
+    const data = e.dataTransfer.getData("text/plain");
+    if(!data) return;
+    const [type, srcId] = data.split(":");
+    if(type === "scenario") await moveScenarioToFolder(srcId, id);
+    if(type === "folder") await moveFolderToFolder(srcId, id);
+  });
+
+  node.appendChild(row);
+
+  if(f.expanded){
+    const childrenWrap = document.createElement("div");
+    childrenWrap.className = "tree-children";
+    childrenWrap.appendChild(buildFolderChildrenDOM(id));
+    node.appendChild(childrenWrap);
+  }
+
+  return node;
+}
+
+function buildScenarioNodeDOM(id){
+  const sc = db.scenarios[id];
+  const row = document.createElement("div");
+  row.className = "tree-row" + (id === db.currentId ? " selected" : "");
+  row.draggable = true;
+  row.innerHTML = `
+    <span class="caret"></span>
+    <span class="icon">📄</span>
+    <span class="label"></span>
+    <span class="row-actions">
+      <button data-act="rename" title="名前変更">✎</button>
+      <button data-act="delete" title="削除">🗑</button>
+    </span>
+  `;
+  row.querySelector(".label").textContent = sc.name;
+
+  row.addEventListener("click", async (e)=>{
+    if(e.target.closest("button")) return;
+    db.currentId = id;
+    await saveDB();
+    renderTree();
+    renderAll();
+  });
+
+  row.querySelector('[data-act="rename"]').addEventListener("click", async (e)=>{
+    e.stopPropagation();
+    await renameScenario(id);
+  });
+  row.querySelector('[data-act="delete"]').addEventListener("click", async (e)=>{
+    e.stopPropagation();
+    await deleteScenario(id);
+  });
+
+  row.addEventListener("dragstart", (e)=>{
+    e.dataTransfer.setData("text/plain", `scenario:${id}`);
+    e.stopPropagation();
+  });
+
+  return row;
+}
+
+function renderScript(){
+  const container = document.getElementById("scriptContent");
+  const sc = currentScenario();
+  if(!sc || sc.lines.length === 0){
+    container.innerHTML = '<div class="empty-state">左のサイドバーからシナリオを選ぶか、<br>「CSV」ボタンで新しいシナリオを追加してください。</div>';
+    return;
+  }
+  const html = ['<div class="script">'];
+  for(const l of sc.lines){
+    if(l.speaker === ""){
+      html.push(`<div class="line tobira"><span class="label">ト書き:</span><span class="text">${escapeHtml(l.text)}</span></div>`);
+    } else {
+      html.push(`<div class="line"><span class="speaker">${escapeHtml(l.speaker)}</span><span class="text">${escapeHtml(l.text)}</span></div>`);
+    }
+  }
+  html.push('</div>');
+  container.innerHTML = html.join("");
+}
+
+function escapeHtml(s){
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>");
+}
+
+function getSpeakerList(){
+  const sc = currentScenario();
+  if(!sc) return [];
+  const set = new Set();
+  for(const l of sc.lines){
+    if(l.speaker !== "") set.add(l.speaker);
+  }
+  return Array.from(set).sort((a,b)=>a.localeCompare(b,'ja'));
+}
+
+let activeChip = null;
+
+function renderChips(){
+  const area = document.getElementById("chipArea");
+  const speakers = getSpeakerList();
+  if(speakers.length === 0){ area.innerHTML = ""; return; }
+  area.innerHTML = speakers.map(sp =>
+    `<span class="speaker-chip${sp===activeChip?' active':''}" data-sp="${escapeAttr(sp)}">${escapeHtml(sp)}</span>`
+  ).join("");
+  area.querySelectorAll(".speaker-chip").forEach(chip=>{
+    chip.addEventListener("click", ()=>{
+      const sp = chip.dataset.sp;
+      document.getElementById("searchInput").value = sp;
+      activeChip = sp;
+      runSearch();
+    });
+  });
+}
+
+function escapeAttr(s){
+  return s.replace(/"/g,"&quot;");
+}
+
+function runSearch(){
+  const q = document.getElementById("searchInput").value.trim();
+  const resultsEl = document.getElementById("searchResults");
+  const sc = currentScenario();
+  activeChip = q || null;
+  renderChips();
+
+  if(!sc || sc.lines.length === 0){
+    resultsEl.innerHTML = '<div class="empty-state">シナリオが読み込まれていません。</div>';
+    return;
+  }
+  if(q === ""){
+    resultsEl.innerHTML = '<div class="result-count">話者名を入力するか、上のタグから選んでください。</div>';
+    return;
+  }
+  const matched = [];
+  sc.lines.forEach((l, idx)=>{
+    if(l.speaker !== "" && l.speaker.includes(q)){
+      matched.push({...l, idx});
+    }
+  });
+  if(matched.length === 0){
+    resultsEl.innerHTML = `<div class="result-count">「${escapeHtml(q)}」に一致する話者の台詞は見つかりませんでした。</div>`;
+    return;
+  }
+  const html = [`<div class="result-count">${matched.length}件ヒット</div>`];
+  for(const m of matched){
+    html.push(`<div class="result-line"><span class="idx">#${m.idx+1}</span><span class="speaker">${escapeHtml(m.speaker)}</span><br><span class="text">${escapeHtml(m.text)}</span></div>`);
+  }
+  resultsEl.innerHTML = html.join("");
+}
+
+function renderAll(){
+  renderScript();
+  renderChips();
+  runSearch();
+}
+
+// --- events ---
+document.getElementById("btnLoad").addEventListener("click", ()=>{
+  document.getElementById("fileInput").click();
+});
+
+document.getElementById("fileInput").addEventListener("change", (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  if(!dbFileHandle){
+    alert("先に「新規DB作成」または「DBファイルを開く」でDBファイルに接続してください。");
+    e.target.value = "";
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = async (ev)=>{
+    const buffer = ev.target.result;
+    const text = decodeCSVBuffer(buffer);
+    const lines = parseCSV(text);
+    const defaultName = file.name.replace(/\.csv$/i, "");
+    const name = prompt("このシナリオの名前を入力してください", defaultName) || defaultName;
+    await addScenario(name, lines, currentTargetFolderId);
+  };
+  reader.readAsArrayBuffer(file);
+  e.target.value = "";
+});
+
+document.getElementById("btnNewFolder").addEventListener("click", async ()=>{
+  await createFolder(currentTargetFolderId);
+});
+
+document.getElementById("btnOpenDB").addEventListener("click", openExistingDB);
+document.getElementById("btnNewDB").addEventListener("click", createNewDB);
+
+document.querySelectorAll(".tab").forEach(tab=>{
+  tab.addEventListener("click", ()=>{
+    document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+    document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+    tab.classList.add("active");
+    document.getElementById(tab.dataset.view).classList.add("active");
+  });
+});
+
+document.getElementById("searchInput").addEventListener("input", runSearch);
+document.getElementById("btnClearSearch").addEventListener("click", ()=>{
+  document.getElementById("searchInput").value = "";
+  runSearch();
+});
+
+// --- init ---
+(async ()=>{
+  setDbStatus("接続確認中…");
+  const ok = await tryReconnect();
+  if(!ok){
+    setDbStatus("DBファイル未接続 →「新規DB作成」または「DBファイルを開く」を押してください");
+  }
+  renderTree();
+  renderAll();
+})();
+
+// --- service worker (offline) ---
+if("serviceWorker" in navigator){
+  window.addEventListener("load", ()=>{
+    navigator.serviceWorker.register("sw.js").catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
