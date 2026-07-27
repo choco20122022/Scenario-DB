@@ -124,6 +124,12 @@
     outline:2px dashed var(--accent);
     outline-offset:-2px;
   }
+  .tree-row.drop-before{
+    box-shadow: 0 -2px 0 0 var(--accent);
+  }
+  .tree-row.drop-after{
+    box-shadow: 0 2px 0 0 var(--accent);
+  }
   .tree-row .caret{
     width:14px;
     flex-shrink:0;
@@ -356,15 +362,53 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
 let db = { scenarios: {}, folders: {}, currentId: null };
-// scenarios: { id: { name, lines: [{speaker, text}], parentId } }
-// folders:   { id: { name, parentId, expanded } }
+// scenarios: { id: { name, lines: [{speaker, text}], parentId, order } }
+// folders:   { id: { name, parentId, expanded, order } }
 // parentId === null はルート直下
+// order は同じ階層（同じparentId）内での並び順（小さいほど上）
 
 function migrateDB(){
   if(!db.folders) db.folders = {};
+  let nextOrder = 0;
+  for(const id of Object.keys(db.folders)){
+    if(db.folders[id].parentId === undefined) db.folders[id].parentId = null;
+    if(db.folders[id].order === undefined) db.folders[id].order = nextOrder++;
+  }
   for(const id of Object.keys(db.scenarios)){
     if(db.scenarios[id].parentId === undefined) db.scenarios[id].parentId = null;
+    if(db.scenarios[id].order === undefined) db.scenarios[id].order = nextOrder++;
   }
+}
+
+function nextOrderInParent(parentId){
+  const folderOrders = Object.values(db.folders).filter(f=>f.parentId===parentId).map(f=>f.order||0);
+  const scenarioOrders = Object.values(db.scenarios).filter(s=>s.parentId===parentId).map(s=>s.order||0);
+  const all = [...folderOrders, ...scenarioOrders];
+  return all.length ? Math.max(...all) + 1 : 0;
+}
+
+// 同一階層内の全アイテム（フォルダ+シナリオ）をorder順に取得
+function siblingsInParent(parentId){
+  const items = [
+    ...Object.keys(db.folders).filter(id=>db.folders[id].parentId===parentId).map(id=>({type:"folder", id, order:db.folders[id].order||0})),
+    ...Object.keys(db.scenarios).filter(id=>db.scenarios[id].parentId===parentId).map(id=>({type:"scenario", id, order:db.scenarios[id].order||0}))
+  ];
+  items.sort((a,b)=>a.order-b.order);
+  return items;
+}
+
+// 指定した階層内のitemを、targetItemの直前 or 直後に挿入されるようorderを振り直す
+async function reorderWithinParent(parentId, movingType, movingId, targetType, targetId, insertAfter){
+  let items = siblingsInParent(parentId).filter(it => !(it.type===movingType && it.id===movingId));
+  const targetIdx = items.findIndex(it => it.type===targetType && it.id===targetId);
+  const insertAt = targetIdx === -1 ? items.length : (insertAfter ? targetIdx+1 : targetIdx);
+  items.splice(insertAt, 0, { type: movingType, id: movingId });
+  items.forEach((it, idx)=>{
+    if(it.type === "folder") db.folders[it.id].order = idx;
+    else db.scenarios[it.id].order = idx;
+  });
+  await saveDB();
+  renderTree();
 }
 
 let dbFileHandle = null; // FileSystemFileHandle for db.json
@@ -544,7 +588,8 @@ function parseCSV(text){
 
 async function addScenario(name, lines, parentId){
   const id = "s_" + Date.now() + "_" + Math.random().toString(36).slice(2,7);
-  db.scenarios[id] = { name, lines, parentId: parentId || null };
+  const pid = parentId || null;
+  db.scenarios[id] = { name, lines, parentId: pid, order: nextOrderInParent(pid) };
   db.currentId = id;
   await saveDB();
   renderTree();
@@ -566,7 +611,8 @@ async function createFolder(parentId){
   const name = prompt("新しいフォルダの名前を入力してください", "新しいフォルダ");
   if(!name) return;
   const id = genId("f");
-  db.folders[id] = { name, parentId: parentId || null, expanded: true };
+  const pid = parentId || null;
+  db.folders[id] = { name, parentId: pid, expanded: true, order: nextOrderInParent(pid) };
   await saveDB();
   renderTree();
 }
@@ -626,7 +672,9 @@ async function deleteScenario(id){
 async function moveScenarioToFolder(scenarioId, folderId){
   const sc = db.scenarios[scenarioId];
   if(!sc) return;
-  sc.parentId = folderId || null;
+  const pid = folderId || null;
+  sc.parentId = pid;
+  sc.order = nextOrderInParent(pid);
   await saveDB();
   renderTree();
 }
@@ -639,7 +687,9 @@ async function moveFolderToFolder(folderId, targetFolderId){
     if(cur === folderId) { alert("フォルダを自分自身の中には移動できません。"); return; }
     cur = db.folders[cur] ? db.folders[cur].parentId : null;
   }
-  db.folders[folderId].parentId = targetFolderId || null;
+  const pid = targetFolderId || null;
+  db.folders[folderId].parentId = pid;
+  db.folders[folderId].order = nextOrderInParent(pid);
   await saveDB();
   renderTree();
 }
@@ -672,18 +722,64 @@ function renderTree(){
 
 function buildFolderChildrenDOM(parentId){
   const wrapper = document.createElement("div");
-  const folderIds = Object.keys(db.folders).filter(id=>db.folders[id].parentId===parentId)
-    .sort((a,b)=>db.folders[a].name.localeCompare(db.folders[b].name,'ja'));
-  const scenarioIds = Object.keys(db.scenarios).filter(id=>db.scenarios[id].parentId===parentId)
-    .sort((a,b)=>db.scenarios[a].name.localeCompare(db.scenarios[b].name,'ja'));
-
-  for(const fid of folderIds){
-    wrapper.appendChild(buildFolderNodeDOM(fid));
-  }
-  for(const sid of scenarioIds){
-    wrapper.appendChild(buildScenarioNodeDOM(sid));
+  const items = siblingsInParent(parentId);
+  for(const it of items){
+    wrapper.appendChild(it.type === "folder" ? buildFolderNodeDOM(it.id) : buildScenarioNodeDOM(it.id));
   }
   return wrapper;
+}
+
+// 行に「並び替えドロップ」の共通ハンドラを付与する
+// parentId: この行が属する階層のparentId、rowType/rowId: この行自体の種別とid
+function attachReorderDropHandlers(row, parentId, rowType, rowId, options){
+  const allowContainerDrop = !!(options && options.allowContainerDrop); // フォルダなら「中に入れる」も許可
+  row.addEventListener("dragover", (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = row.getBoundingClientRect();
+    const relY = (e.clientY - rect.top) / rect.height;
+    row.classList.remove("drop-before", "drop-after", "dragover");
+    if(allowContainerDrop && relY > 0.25 && relY < 0.75){
+      row.classList.add("dragover");
+    } else if(relY <= 0.5){
+      row.classList.add("drop-before");
+    } else {
+      row.classList.add("drop-after");
+    }
+  });
+  row.addEventListener("dragleave", ()=>{
+    row.classList.remove("dragover", "drop-before", "drop-after");
+  });
+  row.addEventListener("drop", async (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    const wasContainerDrop = row.classList.contains("dragover");
+    const insertAfter = row.classList.contains("drop-after");
+    row.classList.remove("dragover", "drop-before", "drop-after");
+    const data = e.dataTransfer.getData("text/plain");
+    if(!data) return;
+    const [type, srcId] = data.split(":");
+    if(type === "folder" && srcId === rowId) return; // 自分自身へは無視
+
+    if(wasContainerDrop && allowContainerDrop){
+      if(type === "scenario") await moveScenarioToFolder(srcId, rowId);
+      if(type === "folder") await moveFolderToFolder(srcId, rowId);
+    } else {
+      // 同じ階層内での並び替え
+      if(type === "scenario"){
+        db.scenarios[srcId].parentId = parentId;
+      } else {
+        // 循環チェック
+        let cur = parentId;
+        while(cur){
+          if(cur === srcId){ alert("フォルダを自分自身の中には移動できません。"); return; }
+          cur = db.folders[cur] ? db.folders[cur].parentId : null;
+        }
+        db.folders[srcId].parentId = parentId;
+      }
+      await reorderWithinParent(parentId, type, srcId, rowType, rowId, insertAfter);
+    }
+  });
 }
 
 function buildFolderNodeDOM(id){
@@ -731,19 +827,8 @@ function buildFolderNodeDOM(id){
     e.dataTransfer.setData("text/plain", `folder:${id}`);
     e.stopPropagation();
   });
-  // ドロップ先（他フォルダ・シナリオを受け入れる）
-  row.addEventListener("dragover", (e)=>{ e.preventDefault(); row.classList.add("dragover"); });
-  row.addEventListener("dragleave", ()=>{ row.classList.remove("dragover"); });
-  row.addEventListener("drop", async (e)=>{
-    e.preventDefault();
-    e.stopPropagation();
-    row.classList.remove("dragover");
-    const data = e.dataTransfer.getData("text/plain");
-    if(!data) return;
-    const [type, srcId] = data.split(":");
-    if(type === "scenario") await moveScenarioToFolder(srcId, id);
-    if(type === "folder") await moveFolderToFolder(srcId, id);
-  });
+  // ドロップ先：上下端なら並び替え、中央なら「このフォルダの中に入れる」
+  attachReorderDropHandlers(row, f.parentId, "folder", id, { allowContainerDrop: true });
 
   node.appendChild(row);
 
@@ -795,6 +880,8 @@ function buildScenarioNodeDOM(id){
     e.dataTransfer.setData("text/plain", `scenario:${id}`);
     e.stopPropagation();
   });
+
+  attachReorderDropHandlers(row, sc.parentId, "scenario", id, { allowContainerDrop: false });
 
   return row;
 }
