@@ -313,6 +313,20 @@
     font-weight:600;
     margin-bottom:14px;
   }
+  .result-scenario-header{
+    font-size:13px;
+    font-weight:700;
+    color:var(--accent);
+    margin:18px 0 8px;
+    padding-bottom:4px;
+    border-bottom:1px solid var(--border);
+  }
+  .result-scenario-header:first-of-type{
+    margin-top:0;
+  }
+  .result-line:hover{
+    background:var(--accent-bg);
+  }
   ::-webkit-scrollbar{ width:10px; }
   ::-webkit-scrollbar-thumb{ background:var(--border); border-radius:5px; }
 </style>
@@ -910,11 +924,11 @@ function escapeHtml(s){
 }
 
 function getSpeakerList(){
-  const sc = currentScenario();
-  if(!sc) return [];
   const set = new Set();
-  for(const l of sc.lines){
-    if(l.speaker !== "") set.add(l.speaker);
+  for(const sc of Object.values(db.scenarios)){
+    for(const l of sc.lines){
+      if(l.speaker !== "") set.add(l.speaker);
+    }
   }
   return Array.from(set).sort((a,b)=>a.localeCompare(b,'ja'));
 }
@@ -945,33 +959,61 @@ function escapeAttr(s){
 function runSearch(){
   const q = document.getElementById("searchInput").value.trim();
   const resultsEl = document.getElementById("searchResults");
-  const sc = currentScenario();
   activeChip = q || null;
   renderChips();
 
-  if(!sc || sc.lines.length === 0){
+  const scenarioIds = Object.keys(db.scenarios);
+  if(scenarioIds.length === 0){
     resultsEl.innerHTML = '<div class="empty-state">シナリオが読み込まれていません。</div>';
     return;
   }
   if(q === ""){
-    resultsEl.innerHTML = '<div class="result-count">話者名を入力するか、上のタグから選んでください。</div>';
+    resultsEl.innerHTML = '<div class="result-count">話者名を入力するか、上のタグから選んでください。（登録済みの全シナリオが対象です）</div>';
     return;
   }
-  const matched = [];
-  sc.lines.forEach((l, idx)=>{
-    if(l.speaker !== "" && l.speaker.includes(q)){
-      matched.push({...l, idx});
-    }
-  });
+
+  // シナリオ名でソートしつつ、全シナリオを横断して検索
+  const sortedIds = scenarioIds.sort((a,b)=>db.scenarios[a].name.localeCompare(db.scenarios[b].name,'ja'));
+  const matched = []; // { scenarioId, scenarioName, idx, speaker, text }
+  for(const sid of sortedIds){
+    const sc = db.scenarios[sid];
+    sc.lines.forEach((l, idx)=>{
+      if(l.speaker !== "" && l.speaker.includes(q)){
+        matched.push({ scenarioId: sid, scenarioName: sc.name, idx, speaker: l.speaker, text: l.text });
+      }
+    });
+  }
+
   if(matched.length === 0){
-    resultsEl.innerHTML = `<div class="result-count">「${escapeHtml(q)}」に一致する話者の台詞は見つかりませんでした。</div>`;
+    resultsEl.innerHTML = `<div class="result-count">「${escapeHtml(q)}」に一致する話者の台詞は、登録済みの全シナリオ内に見つかりませんでした。</div>`;
     return;
   }
-  const html = [`<div class="result-count">${matched.length}件ヒット</div>`];
+
+  const scenarioCount = new Set(matched.map(m=>m.scenarioId)).size;
+  const html = [`<div class="result-count">${matched.length}件ヒット（${scenarioCount}シナリオ中）</div>`];
+  let lastScenarioId = null;
   for(const m of matched){
-    html.push(`<div class="result-line"><span class="idx">#${m.idx+1}</span><span class="speaker">${escapeHtml(m.speaker)}</span><br><span class="text">${escapeHtml(m.text)}</span></div>`);
+    if(m.scenarioId !== lastScenarioId){
+      html.push(`<div class="result-scenario-header">${escapeHtml(m.scenarioName)}</div>`);
+      lastScenarioId = m.scenarioId;
+    }
+    html.push(`<div class="result-line" data-scenario-id="${escapeAttr(m.scenarioId)}"><span class="idx">#${m.idx+1}</span><span class="speaker">${escapeHtml(m.speaker)}</span><br><span class="text">${escapeHtml(m.text)}</span></div>`);
   }
   resultsEl.innerHTML = html.join("");
+
+  // 結果行クリックで該当シナリオの全体表示にジャンプ
+  resultsEl.querySelectorAll(".result-line").forEach(el=>{
+    el.style.cursor = "pointer";
+    el.addEventListener("click", async ()=>{
+      const sid = el.dataset.scenarioId;
+      if(!sid || !db.scenarios[sid]) return;
+      db.currentId = sid;
+      await saveDB();
+      renderTree();
+      renderScript();
+      document.querySelector('.tab[data-view="viewScript"]').click();
+    });
+  });
 }
 
 function renderAll(){
