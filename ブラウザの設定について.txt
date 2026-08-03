@@ -1,0 +1,2 @@
+1、Braveのアドレスバーにbrave://flags/#file-system-access-apiと入力してEnter
+2、表示された項目のドロップダウンを「Default」から「Enabled」に変更
