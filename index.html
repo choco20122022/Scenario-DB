@@ -186,10 +186,25 @@
   }
   .tabs{
     display:flex;
+    align-items:center;
     gap:6px;
     padding:8px 16px 0;
     background:var(--panel);
     border-bottom:1px solid var(--border);
+  }
+  .current-scenario-label{
+    font-size:13px;
+    font-weight:700;
+    color:var(--text);
+    background:var(--panel2);
+    border:1px solid var(--border);
+    border-radius:6px;
+    padding:5px 12px;
+    margin-bottom:6px;
+    max-width:40%;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
   }
   .tab{
     padding:8px 16px;
@@ -376,6 +391,8 @@
     <div class="tabs">
       <div class="tab active" data-view="viewScript">全体表示</div>
       <div class="tab" data-view="viewSearch">話者検索</div>
+      <span style="flex:1"></span>
+      <span id="currentScenarioLabel" class="current-scenario-label"></span>
     </div>
     <div id="viewScript" class="view active">
       <div id="scriptContent"><div class="empty-state">左のサイドバーからシナリオを選ぶか、<br>「CSV」ボタンで新しいシナリオを追加してください。</div></div>
@@ -1036,15 +1053,29 @@ function runSearch(){
       await saveDB();
       renderTree();
       renderScript();
+      renderCurrentScenarioLabel();
       document.querySelector('.tab[data-view="viewScript"]').click();
     });
   });
+}
+
+function renderCurrentScenarioLabel(){
+  const label = document.getElementById("currentScenarioLabel");
+  const sc = currentScenario();
+  if(sc){
+    label.textContent = "📄 " + sc.name;
+    label.title = sc.name;
+  } else {
+    label.textContent = "";
+    label.title = "";
+  }
 }
 
 function renderAll(){
   renderScript();
   renderChips();
   runSearch();
+  renderCurrentScenarioLabel();
 }
 
 // --- events ---
