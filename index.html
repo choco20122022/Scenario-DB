@@ -19,6 +19,10 @@
     --accent-dim:#7a5fc0;
     --tobira:#8a5a00;
     --tobira-bg:#fdf1dc;
+    --meta:#1a6fa8;
+    --meta-bg:#e4f2fb;
+    --comment:#6b7280;
+    --comment-bg:#eef0f2;
   }
   *{box-sizing:border-box;}
   body{
@@ -248,6 +252,22 @@
     color:var(--tobira);
     opacity:1;
     margin-right:6px;
+  }
+  .line.meta{
+    font-style:normal;
+    font-weight:700;
+    color:var(--meta);
+    background:var(--meta-bg);
+    padding:10px 14px;
+    border-radius:6px;
+  }
+  .line.comment{
+    font-style:normal;
+    color:var(--comment);
+    background:var(--comment-bg);
+    padding:10px 14px;
+    border-radius:6px;
+    font-size:14px;
   }
   .line.highlight .text{
     background:var(--accent-bg);
@@ -910,7 +930,14 @@ function renderScript(){
   const html = ['<div class="script">'];
   for(const l of sc.lines){
     if(l.speaker === ""){
-      html.push(`<div class="line tobira"><span class="text">${escapeHtml(l.text)}</span></div>`);
+      const t = l.text;
+      if(t.startsWith("タイトル：") || t.startsWith("タイトル:") || t.startsWith("あらすじ：") || t.startsWith("あらすじ:")){
+        html.push(`<div class="line meta"><span class="text">${escapeHtml(t)}</span></div>`);
+      } else if(t.startsWith("//")){
+        html.push(`<div class="line comment"><span class="text">${escapeHtml(t)}</span></div>`);
+      } else {
+        html.push(`<div class="line tobira"><span class="text">${escapeHtml(t)}</span></div>`);
+      }
     } else {
       html.push(`<div class="line"><span class="speaker">${escapeHtml(l.speaker)}</span><span class="text">${escapeHtml(l.text)}</span></div>`);
     }
