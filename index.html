@@ -86,6 +86,11 @@
     overflow-y:auto;
     padding:12px 8px;
   }
+  #sidebar.file-dragover{
+    outline:3px dashed var(--accent);
+    outline-offset:-3px;
+    background:var(--accent-bg);
+  }
   #sidebarResizer{
     width:6px;
     flex-shrink:0;
@@ -796,11 +801,15 @@ function renderTree(){
     }
   });
 
-  // ルート自体へのドロップ（トップレベルへ戻す）を許可
+  // ルート自体へのドロップ（トップレベルへ戻す・外部CSVファイルの受け入れ）を許可
   area.addEventListener("dragover", (e)=>{ e.preventDefault(); });
   area.addEventListener("drop", async (e)=>{
     if(e.target !== area) return;
     e.preventDefault();
+    if(e.dataTransfer.files && e.dataTransfer.files.length > 0){
+      await importCsvFiles(e.dataTransfer.files, null);
+      return;
+    }
     const data = e.dataTransfer.getData("text/plain");
     if(!data) return;
     const [type, id] = data.split(":");
@@ -845,6 +854,14 @@ function attachReorderDropHandlers(row, parentId, rowType, rowId, options){
     const wasContainerDrop = row.classList.contains("dragover");
     const insertAfter = row.classList.contains("drop-after");
     row.classList.remove("dragover", "drop-before", "drop-after");
+
+    // 外部からのCSVファイルドロップ
+    if(e.dataTransfer.files && e.dataTransfer.files.length > 0){
+      const targetFolderId = allowContainerDrop ? rowId : parentId;
+      await importCsvFiles(e.dataTransfer.files, targetFolderId);
+      return;
+    }
+
     const data = e.dataTransfer.getData("text/plain");
     if(!data) return;
     const [type, srcId] = data.split(":");
@@ -1134,24 +1151,25 @@ function readFileAsArrayBuffer(file){
   });
 }
 
-document.getElementById("fileInput").addEventListener("change", async (e)=>{
-  const files = Array.from(e.target.files || []);
+// CSVファイル群を読み込んでシナリオとして登録する共通処理
+// ファイル選択・ドラッグ&ドロップの両方から呼ばれる
+async function importCsvFiles(files, targetFolderId){
+  files = Array.from(files || []).filter(f => /\.csv$/i.test(f.name));
   if(files.length === 0) return;
   if(!dbFileHandle){
     alert("先に「新規DB作成」または「DBファイルを開く」でDBファイルに接続してください。");
-    e.target.value = "";
     return;
   }
 
   if(files.length === 1){
-    // 1件のみ：これまで通り名前を確認できる
+    // 1件のみ：名前を確認できる
     const file = files[0];
     const buffer = await readFileAsArrayBuffer(file);
     const text = decodeCSVBuffer(buffer);
     const lines = parseCSV(text);
     const defaultName = file.name.replace(/\.csv$/i, "");
     const name = prompt("このシナリオの名前を入力してください", defaultName) || defaultName;
-    await addScenario(name, lines, currentTargetFolderId);
+    await addScenario(name, lines, targetFolderId);
   } else {
     // 複数件：ファイル名をそのままシナリオ名にして一括登録
     let successCount = 0;
@@ -1163,7 +1181,7 @@ document.getElementById("fileInput").addEventListener("change", async (e)=>{
         const lines = parseCSV(text);
         const name = file.name.replace(/\.csv$/i, "");
         const id = "s_" + Date.now() + "_" + Math.random().toString(36).slice(2,7);
-        const pid = currentTargetFolderId || null;
+        const pid = targetFolderId || null;
         db.scenarios[id] = { name, lines, parentId: pid, order: nextOrderInParent(pid) };
         db.currentId = id;
         successCount++;
@@ -1179,7 +1197,10 @@ document.getElementById("fileInput").addEventListener("change", async (e)=>{
       alert(`${successCount}件のシナリオを追加しました。（${failCount}件は読み込みに失敗しました）`);
     }
   }
+}
 
+document.getElementById("fileInput").addEventListener("change", async (e)=>{
+  await importCsvFiles(e.target.files, currentTargetFolderId);
   e.target.value = "";
 });
 
@@ -1206,6 +1227,26 @@ document.getElementById("btnClearSearch").addEventListener("click", ()=>{
 });
 
 // --- サイドバー幅リサイズ ---
+// --- サイドバー全体への外部CSVファイルドラッグ時のハイライト ---
+(function initSidebarFileDragHighlight(){
+  const sidebar = document.getElementById("sidebar");
+  let dragCounter = 0;
+
+  sidebar.addEventListener("dragenter", (e)=>{
+    if(!e.dataTransfer.types || !e.dataTransfer.types.includes("Files")) return;
+    dragCounter++;
+    sidebar.classList.add("file-dragover");
+  });
+  sidebar.addEventListener("dragleave", ()=>{
+    dragCounter = Math.max(0, dragCounter - 1);
+    if(dragCounter === 0) sidebar.classList.remove("file-dragover");
+  });
+  sidebar.addEventListener("drop", ()=>{
+    dragCounter = 0;
+    sidebar.classList.remove("file-dragover");
+  });
+})();
+
 (function initSidebarResizer(){
   const sidebar = document.getElementById("sidebar");
   const resizer = document.getElementById("sidebarResizer");
