@@ -784,14 +784,14 @@ function renderTree(){
   const area = document.getElementById("treeArea");
   const rootFolders = Object.keys(db.folders).filter(id=>db.folders[id].parentId===null);
   const rootScenarios = Object.keys(db.scenarios).filter(id=>db.scenarios[id].parentId===null);
+  const isEmpty = rootFolders.length === 0 && rootScenarios.length === 0 && Object.keys(db.scenarios).length === 0;
 
-  if(rootFolders.length === 0 && rootScenarios.length === 0 && Object.keys(db.scenarios).length === 0){
-    area.innerHTML = '<div class="tree-empty">まだシナリオがありません。<br>「CSV」ボタンから追加してください。</div>';
-    return;
+  if(isEmpty){
+    area.innerHTML = '<div class="tree-empty">まだシナリオがありません。<br>「CSV」ボタンから追加するか、<br>CSVファイルをここにドラッグしてください。</div>';
+  } else {
+    area.innerHTML = "";
+    area.appendChild(buildFolderChildrenDOM(null));
   }
-
-  area.innerHTML = "";
-  area.appendChild(buildFolderChildrenDOM(null));
 
   // ツリーの空白部分をクリックしたら「ルートを追加先」にする
   area.addEventListener("click", (e)=>{
@@ -802,14 +802,15 @@ function renderTree(){
   });
 
   // ルート自体へのドロップ（トップレベルへ戻す・外部CSVファイルの受け入れ）を許可
+  // 空の状態（tree-emptyメッセージのみ表示中）でも受け付ける
   area.addEventListener("dragover", (e)=>{ e.preventDefault(); });
   area.addEventListener("drop", async (e)=>{
-    if(e.target !== area) return;
     e.preventDefault();
     if(e.dataTransfer.files && e.dataTransfer.files.length > 0){
       await importCsvFiles(e.dataTransfer.files, null);
       return;
     }
+    if(e.target !== area) return;
     const data = e.dataTransfer.getData("text/plain");
     if(!data) return;
     const [type, id] = data.split(":");
