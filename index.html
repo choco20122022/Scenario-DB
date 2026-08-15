@@ -781,6 +781,7 @@ function renderTargetFolderLabel(){
 
 function renderTree(){
   renderTargetFolderLabel();
+  document.getElementById("sidebar").classList.remove("file-dragover");
   const area = document.getElementById("treeArea");
   const rootFolders = Object.keys(db.folders).filter(id=>db.folders[id].parentId===null);
   const rootScenarios = Object.keys(db.scenarios).filter(id=>db.scenarios[id].parentId===null);
@@ -1231,21 +1232,29 @@ document.getElementById("btnClearSearch").addEventListener("click", ()=>{
 // --- サイドバー全体への外部CSVファイルドラッグ時のハイライト ---
 (function initSidebarFileDragHighlight(){
   const sidebar = document.getElementById("sidebar");
-  let dragCounter = 0;
 
-  sidebar.addEventListener("dragenter", (e)=>{
+  function clearHighlight(){
+    sidebar.classList.remove("file-dragover");
+  }
+
+  // dragover は要素上にいる間ずっと連続発火するので、これだけでハイライトのON/OFFを管理する
+  // （dragenter/dragleaveのカウンター方式は、renderTreeによるDOM総入れ替えで
+  //   dragleaveの相手が消えてカウントが狂うため使わない）
+  sidebar.addEventListener("dragover", (e)=>{
     if(!e.dataTransfer.types || !e.dataTransfer.types.includes("Files")) return;
-    dragCounter++;
+    e.preventDefault();
     sidebar.classList.add("file-dragover");
   });
-  sidebar.addEventListener("dragleave", ()=>{
-    dragCounter = Math.max(0, dragCounter - 1);
-    if(dragCounter === 0) sidebar.classList.remove("file-dragover");
+
+  // sidebar自体から完全に離れたときだけ解除（子要素間の移動では発火しない）
+  sidebar.addEventListener("dragleave", (e)=>{
+    if(e.relatedTarget && sidebar.contains(e.relatedTarget)) return;
+    clearHighlight();
   });
-  sidebar.addEventListener("drop", ()=>{
-    dragCounter = 0;
-    sidebar.classList.remove("file-dragover");
-  });
+
+  sidebar.addEventListener("drop", clearHighlight);
+  window.addEventListener("dragend", clearHighlight);
+  document.addEventListener("drop", clearHighlight);
 })();
 
 (function initSidebarResizer(){
