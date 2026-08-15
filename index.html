@@ -368,7 +368,7 @@
 
 <header>
   <h1>シナリオDB</h1>
-  <input type="file" id="fileInput" accept=".csv">
+  <input type="file" id="fileInput" accept=".csv" multiple>
   <span style="flex:1"></span>
   <button id="btnOpenDB" title="既存のdb.jsonを開く">DBファイルを開く</button>
   <button id="btnNewDB" title="新しくdb.jsonを作成する">新規DB作成</button>
@@ -380,7 +380,7 @@
     <div id="sidebar">
       <div class="sidebar-toolbar">
         <button id="btnNewFolder" title="新しいフォルダを作成">📁+ フォルダ</button>
-        <button id="btnLoad" title="CSVを読み込んでシナリオを追加">📄+ CSV</button>
+        <button id="btnLoad" title="CSVを読み込んでシナリオを追加（複数選択可）">📄+ CSV</button>
       </div>
       <div id="treeArea"></div>
     </div>
@@ -1083,24 +1083,61 @@ document.getElementById("btnLoad").addEventListener("click", ()=>{
   document.getElementById("fileInput").click();
 });
 
-document.getElementById("fileInput").addEventListener("change", (e)=>{
-  const file = e.target.files[0];
-  if(!file) return;
+function readFileAsArrayBuffer(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = (ev)=>resolve(ev.target.result);
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+document.getElementById("fileInput").addEventListener("change", async (e)=>{
+  const files = Array.from(e.target.files || []);
+  if(files.length === 0) return;
   if(!dbFileHandle){
     alert("先に「新規DB作成」または「DBファイルを開く」でDBファイルに接続してください。");
     e.target.value = "";
     return;
   }
-  const reader = new FileReader();
-  reader.onload = async (ev)=>{
-    const buffer = ev.target.result;
+
+  if(files.length === 1){
+    // 1件のみ：これまで通り名前を確認できる
+    const file = files[0];
+    const buffer = await readFileAsArrayBuffer(file);
     const text = decodeCSVBuffer(buffer);
     const lines = parseCSV(text);
     const defaultName = file.name.replace(/\.csv$/i, "");
     const name = prompt("このシナリオの名前を入力してください", defaultName) || defaultName;
     await addScenario(name, lines, currentTargetFolderId);
-  };
-  reader.readAsArrayBuffer(file);
+  } else {
+    // 複数件：ファイル名をそのままシナリオ名にして一括登録
+    let successCount = 0;
+    let failCount = 0;
+    for(const file of files){
+      try{
+        const buffer = await readFileAsArrayBuffer(file);
+        const text = decodeCSVBuffer(buffer);
+        const lines = parseCSV(text);
+        const name = file.name.replace(/\.csv$/i, "");
+        const id = "s_" + Date.now() + "_" + Math.random().toString(36).slice(2,7);
+        const pid = currentTargetFolderId || null;
+        db.scenarios[id] = { name, lines, parentId: pid, order: nextOrderInParent(pid) };
+        db.currentId = id;
+        successCount++;
+      }catch(err){
+        console.error("読み込み失敗:", file.name, err);
+        failCount++;
+      }
+    }
+    await saveDB();
+    renderTree();
+    renderAll();
+    if(failCount > 0){
+      alert(`${successCount}件のシナリオを追加しました。（${failCount}件は読み込みに失敗しました）`);
+    }
+  }
+
   e.target.value = "";
 });
 
