@@ -107,6 +107,11 @@
     font-size:12px;
     padding:6px 4px;
   }
+  .target-folder-label{
+    font-size:11px;
+    color:var(--text-dim);
+    padding:0 4px 8px;
+  }
   .tree-node{ user-select:none; }
   .tree-row{
     display:flex;
@@ -382,6 +387,7 @@
         <button id="btnNewFolder" title="新しいフォルダを作成">📁+ フォルダ</button>
         <button id="btnLoad" title="CSVを読み込んでシナリオを追加（複数選択可）">📄+ CSV</button>
       </div>
+      <div id="targetFolderLabel" class="target-folder-label"></div>
       <div id="treeArea"></div>
     </div>
     <div id="sidebarResizer"></div>
@@ -661,7 +667,12 @@ function currentScenario(){
 }
 
 // ---- フォルダ/ツリー関連 ----
-let currentTargetFolderId = null; // 「CSV追加」「新規フォルダ」がどこに作られるか
+let currentTargetFolderId = null; // 「CSV追加」「新規フォルダ」がどこに作られるか（選択中のフォルダ）
+
+function selectTargetFolder(id){
+  currentTargetFolderId = id;
+  renderTree();
+}
 
 function genId(prefix){
   return prefix + "_" + Date.now() + "_" + Math.random().toString(36).slice(2,7);
@@ -754,7 +765,17 @@ async function moveFolderToFolder(folderId, targetFolderId){
   renderTree();
 }
 
+function renderTargetFolderLabel(){
+  const label = document.getElementById("targetFolderLabel");
+  if(currentTargetFolderId && db.folders[currentTargetFolderId]){
+    label.textContent = "追加先: 📁 " + db.folders[currentTargetFolderId].name;
+  } else {
+    label.textContent = "追加先: トップレベル";
+  }
+}
+
 function renderTree(){
+  renderTargetFolderLabel();
   const area = document.getElementById("treeArea");
   const rootFolders = Object.keys(db.folders).filter(id=>db.folders[id].parentId===null);
   const rootScenarios = Object.keys(db.scenarios).filter(id=>db.scenarios[id].parentId===null);
@@ -766,6 +787,14 @@ function renderTree(){
 
   area.innerHTML = "";
   area.appendChild(buildFolderChildrenDOM(null));
+
+  // ツリーの空白部分をクリックしたら「ルートを追加先」にする
+  area.addEventListener("click", (e)=>{
+    if(e.target === area){
+      currentTargetFolderId = null;
+      renderTree();
+    }
+  });
 
   // ルート自体へのドロップ（トップレベルへ戻す）を許可
   area.addEventListener("dragover", (e)=>{ e.preventDefault(); });
@@ -848,7 +877,7 @@ function buildFolderNodeDOM(id){
   node.className = "tree-node";
 
   const row = document.createElement("div");
-  row.className = "tree-row";
+  row.className = "tree-row" + (id === currentTargetFolderId ? " selected" : "");
   row.draggable = true;
   row.innerHTML = `
     <span class="caret">${f.expanded ? "▾" : "▸"}</span>
@@ -861,11 +890,12 @@ function buildFolderNodeDOM(id){
     </span>
   `;
   row.querySelector(".label").textContent = f.name;
-  row.title = f.name;
+  row.title = f.name + "（クリックで選択・CSV/フォルダの追加先になります）";
 
   row.addEventListener("click", (e)=>{
     if(e.target.closest("button")) return;
     f.expanded = !f.expanded;
+    currentTargetFolderId = id;
     renderTree();
   });
 
@@ -922,6 +952,7 @@ function buildScenarioNodeDOM(id){
   row.addEventListener("click", async (e)=>{
     if(e.target.closest("button")) return;
     db.currentId = id;
+    currentTargetFolderId = sc.parentId; // このシナリオが属するフォルダを追加先にする
     await saveDB();
     renderTree();
     renderAll();
