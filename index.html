@@ -429,6 +429,15 @@ function migrateDB(){
   }
 }
 
+// DBファイルを開くたびに、ルート直下（1階層目）のフォルダを閉じた状態にする
+function collapseRootFolders(){
+  for(const id of Object.keys(db.folders)){
+    if(db.folders[id].parentId === null){
+      db.folders[id].expanded = false;
+    }
+  }
+}
+
 function nextOrderInParent(parentId){
   const folderOrders = Object.values(db.folders).filter(f=>f.parentId===parentId).map(f=>f.order||0);
   const scenarioOrders = Object.values(db.scenarios).filter(s=>s.parentId===parentId).map(s=>s.order||0);
@@ -521,6 +530,7 @@ async function openExistingDB(){
     const text = await file.text();
     db = JSON.parse(text);
     migrateDB();
+    collapseRootFolders();
     dbFileHandle = handle;
     await idbSetHandle(handle);
     setDbStatus("接続中: " + handle.name);
@@ -566,6 +576,7 @@ async function tryReconnect(){
     const text = await file.text();
     db = JSON.parse(text);
     migrateDB();
+    collapseRootFolders();
     dbFileHandle = handle;
     setDbStatus("接続中: " + handle.name);
     return true;
@@ -661,7 +672,7 @@ async function createFolder(parentId){
   if(!name) return;
   const id = genId("f");
   const pid = parentId || null;
-  db.folders[id] = { name, parentId: pid, expanded: true, order: nextOrderInParent(pid) };
+  db.folders[id] = { name, parentId: pid, expanded: false, order: nextOrderInParent(pid) };
   await saveDB();
   renderTree();
 }
