@@ -6,6 +6,17 @@
 <title>シナリオDB</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#ffffff">
+<script>
+  // ページ描画前にテーマを適用し、ライト→ダークの一瞬の切り替わり（ちらつき）を防ぐ
+  (function(){
+    try{
+      const saved = localStorage.getItem("theme");
+      if(saved === "dark"){
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    }catch(e){}
+  })();
+</script>
 <style>
   :root{
     --bg:#f4f5f7;
@@ -23,6 +34,23 @@
     --meta-bg:#e4f2fb;
     --comment:#6b7280;
     --comment-bg:#eef0f2;
+  }
+  html[data-theme="dark"]{
+    --bg:#181a20;
+    --panel:#20232b;
+    --panel2:#2a2e38;
+    --border:#3a3f4b;
+    --text:#e8eaed;
+    --text-dim:#9aa1ad;
+    --accent:#b39ddb;
+    --accent-bg:#332c4a;
+    --accent-dim:#8b7ab8;
+    --tobira:#e0b877;
+    --tobira-bg:#3a3222;
+    --meta:#7cc0ec;
+    --meta-bg:#1f3040;
+    --comment:#9aa1ad;
+    --comment-bg:#2a2e38;
   }
   *{box-sizing:border-box;}
   body{
@@ -298,35 +326,109 @@
     padding:2px 6px;
   }
   /* 検索表示 */
-  .search-bar{
-    display:flex;
-    gap:8px;
+  .search-form{
     max-width:720px;
     margin:0 auto 20px;
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:16px;
   }
-  .search-bar input{
+  .search-form-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:12px;
+  }
+  .search-form-row:last-child{
+    margin-bottom:0;
+    justify-content:flex-end;
+  }
+  .search-form-label{
+    flex-shrink:0;
+    width:180px;
+    font-size:13px;
+    font-weight:700;
+    color:var(--text-dim);
+  }
+  .optional-badge{
+    display:inline-block;
+    margin-left:6px;
+    font-size:11px;
+    font-weight:600;
+    color:var(--text-dim);
+    background:var(--panel2);
+    border-radius:4px;
+    padding:1px 6px;
+  }
+  .search-form-row select,
+  .search-form-row input{
     flex:1;
+  }
+  #speakerQueryRow.disabled{
+    opacity:0.4;
+    pointer-events:none;
+  }
+  .search-run-btn{
+    background:var(--accent);
+    color:#fff;
+    border-color:var(--accent);
+    font-size:14px;
+    padding:9px 18px;
+  }
+  .search-run-btn:hover{
+    background:var(--accent-dim);
+  }
+  #searchTabBar{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    max-width:720px;
+    margin:0 auto 16px;
+  }
+  .search-tab{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    padding:6px 8px 6px 12px;
+    border-radius:20px;
+    background:var(--panel2);
+    border:1px solid var(--border);
+    font-size:13px;
+    font-weight:600;
+    color:var(--text-dim);
+    cursor:pointer;
+  }
+  .search-tab .kind-icon{
+    font-size:12px;
+  }
+  .search-tab.active{
+    background:var(--accent);
+    color:#fff;
+    border-color:var(--accent);
+  }
+  .search-tab .close-btn{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:18px;
+    height:18px;
+    border-radius:50%;
+    font-size:12px;
+    line-height:1;
+    color:inherit;
+    opacity:0.7;
+  }
+  .search-tab .close-btn:hover{
+    background:rgba(255,255,255,0.3);
+    opacity:1;
+  }
+  .search-tab:not(.active) .close-btn:hover{
+    background:var(--border);
   }
   .search-results{
     max-width:720px;
     margin:0 auto;
-  }
-  .speaker-chip{
-    display:inline-block;
-    padding:5px 12px;
-    margin:2px 4px 10px 0;
-    background:var(--panel2);
-    border:1px solid var(--border);
-    border-radius:20px;
-    font-size:13px;
-    font-weight:600;
-    cursor:pointer;
-    color:var(--text-dim);
-  }
-  .speaker-chip.active{
-    background:var(--accent);
-    color:#fff;
-    border-color:var(--accent);
   }
   .result-line{
     padding:12px 16px;
@@ -383,6 +485,7 @@
   <button id="btnOpenDB" title="既存のdb.jsonを開く">DBファイルを開く</button>
   <button id="btnNewDB" title="新しくdb.jsonを作成する">新規DB作成</button>
   <span id="dbStatus" style="font-size:13px;font-weight:600;color:var(--text-dim);white-space:nowrap;"></span>
+  <button id="btnToggleTheme" title="ライト/ダークモード切り替え">🌙</button>
 </header>
 
 <main>
@@ -409,11 +512,29 @@
       <div id="scriptContent"><div class="empty-state">左のサイドバーからシナリオを選ぶか、<br>「CSV」ボタンで新しいシナリオを追加してください。</div></div>
     </div>
     <div id="viewSearch" class="view">
-      <div class="search-bar">
-        <input type="text" id="searchInput" placeholder="話者名を入力（部分一致）">
-        <button id="btnClearSearch">クリア</button>
+      <div class="search-form">
+        <div class="search-form-row">
+          <label class="search-form-label">① 検索対象</label>
+          <select id="searchKindSelect">
+            <option value="speaker">話者の台詞</option>
+            <option value="tobira">ト書き（地の文）</option>
+          </select>
+        </div>
+        <div class="search-form-row" id="speakerQueryRow">
+          <label class="search-form-label">② 話者名</label>
+          <input type="text" id="searchInput" list="speakerList" placeholder="例：田中花子（部分一致）">
+          <datalist id="speakerList"></datalist>
+        </div>
+        <div class="search-form-row">
+          <label class="search-form-label">③ シナリオ名で絞り込み<span class="optional-badge">任意</span></label>
+          <input type="text" id="scenarioFilterInput" list="scenarioFilterList" placeholder="入力中に、複数シナリオ名に共通する語が候補に出ます（空欄なら全シナリオが対象）">
+          <datalist id="scenarioFilterList"></datalist>
+        </div>
+        <div class="search-form-row">
+          <button id="btnRunSearch" class="search-run-btn">🔍 この条件でタブを開く</button>
+        </div>
       </div>
-      <div id="chipArea"></div>
+      <div id="searchTabBar"></div>
       <div id="searchResults" class="search-results"></div>
     </div>
   </div>
@@ -1036,71 +1157,191 @@ function getSpeakerList(){
   return Array.from(set).sort((a,b)=>a.localeCompare(b,'ja'));
 }
 
-let activeChip = null;
+// ある地の文（話者名なし）の行が、狭義の「ト書き」かどうかを判定する
+// renderScript の分類ロジック（タイトル/あらすじ、//コメント）と揃えている
+function isPlainTobira(text){
+  if(text.startsWith("タイトル：") || text.startsWith("タイトル:")) return false;
+  if(text.startsWith("あらすじ：") || text.startsWith("あらすじ:")) return false;
+  if(text.startsWith("//")) return false;
+  return true;
+}
 
-function renderChips(){
-  const area = document.getElementById("chipArea");
-  const speakers = getSpeakerList();
-  if(speakers.length === 0){ area.innerHTML = ""; return; }
-  area.innerHTML = speakers.map(sp =>
-    `<span class="speaker-chip${sp===activeChip?' active':''}" data-sp="${escapeAttr(sp)}">${escapeHtml(sp)}</span>`
-  ).join("");
-  area.querySelectorAll(".speaker-chip").forEach(chip=>{
-    chip.addEventListener("click", ()=>{
-      const sp = chip.dataset.sp;
-      document.getElementById("searchInput").value = sp;
-      activeChip = sp;
-      runSearch();
-    });
-  });
+// --- 検索タブ管理 ---
+// tab: { id, kind: "speaker"|"tobira", query, scenarioFilter }
+// scenarioFilter: シナリオ名に含まれるべき文字列（空文字なら絞り込みなし＝全シナリオ対象）
+let searchTabs = [];
+let activeSearchTabId = null;
+
+function genTabId(){
+  return "tab_" + Date.now() + "_" + Math.random().toString(36).slice(2,7);
+}
+
+function addSearchTab(kind, query, scenarioFilter){
+  scenarioFilter = (scenarioFilter || "").trim();
+  // 同じ条件（種別・検索語・シナリオ名フィルター）のタブが既にあれば、それをアクティブにするだけ
+  const existing = searchTabs.find(t => t.kind === kind && t.query === query && t.scenarioFilter === scenarioFilter);
+  if(existing){
+    activeSearchTabId = existing.id;
+    renderSearchView();
+    return;
+  }
+  const tab = { id: genTabId(), kind, query, scenarioFilter };
+  searchTabs.push(tab);
+  activeSearchTabId = tab.id;
+  renderSearchView();
+}
+
+function closeSearchTab(tabId){
+  const idx = searchTabs.findIndex(t=>t.id===tabId);
+  if(idx === -1) return;
+  searchTabs.splice(idx, 1);
+  if(activeSearchTabId === tabId){
+    const fallback = searchTabs[idx] || searchTabs[idx-1];
+    activeSearchTabId = fallback ? fallback.id : null;
+  }
+  renderSearchView();
 }
 
 function escapeAttr(s){
   return s.replace(/"/g,"&quot;");
 }
 
-function runSearch(){
-  const q = document.getElementById("searchInput").value.trim();
-  const resultsEl = document.getElementById("searchResults");
-  activeChip = q || null;
-  renderChips();
+// 話者名の入力候補（datalist）を更新する。チップの代わりにオートコンプリートで一覧を提供する
+function renderChips(){
+  const list = document.getElementById("speakerList");
+  const speakers = getSpeakerList();
+  list.innerHTML = speakers.map(sp => `<option value="${escapeAttr(sp)}"></option>`).join("");
+}
 
+// シナリオ名を区切り文字で分割し、複数シナリオに共通して出てくる断片を抽出する
+// 例：「一般-田中花子-本編ルート1」「一般-田中花子-本編ルート2」「番外-田中花子-恋愛編1」
+//   → 分割: [一般,田中花子,本編ルート1], [一般,田中花子,本編ルート2], [番外,田中花子,恋愛編1]
+//   → 2件以上のシナリオに共通して現れる断片だけを候補にする（「一般」「田中花子」など。「本編ルート1」は1件のみなので除外）
+function getCommonScenarioNameTokens(){
+  const SPLIT_REGEX = /[-_\/／\s　]+/;
+  const tokenToScenarioSet = new Map(); // token -> Set(scenarioId)
+
+  for(const [sid, sc] of Object.entries(db.scenarios)){
+    const tokens = sc.name.split(SPLIT_REGEX).map(t=>t.trim()).filter(t=>t !== "");
+    const uniqueTokens = new Set(tokens); // 同じシナリオ内で同じ断片が複数回出ても1回とカウント
+    for(const token of uniqueTokens){
+      if(/^\d+$/.test(token)) continue; // 「1」「2」のような数字だけの断片はノイズなので除外
+      if(!tokenToScenarioSet.has(token)) tokenToScenarioSet.set(token, new Set());
+      tokenToScenarioSet.get(token).add(sid);
+    }
+  }
+
+  const common = [];
+  for(const [token, sidSet] of tokenToScenarioSet.entries()){
+    if(sidSet.size >= 2) common.push({ token, count: sidSet.size });
+  }
+  // 出現シナリオ数が多い順、同数なら文字列順
+  common.sort((a,b)=> b.count - a.count || a.token.localeCompare(b.token, 'ja'));
+  return common;
+}
+
+function renderScenarioFilterCandidates(){
+  const list = document.getElementById("scenarioFilterList");
+  const tokens = getCommonScenarioNameTokens();
+  list.innerHTML = tokens.map(t => `<option value="${escapeAttr(t.token)}">${escapeAttr(t.token)}（${t.count}件のシナリオに共通）</option>`).join("");
+}
+
+function tabLabelText(t){
+  const base = t.kind === "tobira" ? "ト書き" : t.query;
+  return t.scenarioFilter ? `${base}（${t.scenarioFilter}）` : base;
+}
+
+function renderSearchTabBar(){
+  const bar = document.getElementById("searchTabBar");
+  if(searchTabs.length === 0){ bar.innerHTML = ""; return; }
+  bar.innerHTML = searchTabs.map(t=>{
+    const icon = t.kind === "tobira" ? "📝" : "💬";
+    return `<span class="search-tab${t.id===activeSearchTabId?' active':''}" data-tab-id="${t.id}">
+      <span class="kind-icon">${icon}</span><span class="tab-label"></span>
+      <span class="close-btn" data-close="${t.id}">×</span>
+    </span>`;
+  }).join("");
+  bar.querySelectorAll(".search-tab").forEach(el=>{
+    const t = searchTabs.find(x=>x.id===el.dataset.tabId);
+    el.querySelector(".tab-label").textContent = tabLabelText(t);
+    el.title = tabLabelText(t);
+    el.addEventListener("click", (e)=>{
+      if(e.target.closest(".close-btn")) return;
+      activeSearchTabId = el.dataset.tabId;
+      renderSearchView();
+    });
+  });
+  bar.querySelectorAll(".close-btn").forEach(btn=>{
+    btn.addEventListener("click", (e)=>{
+      e.stopPropagation();
+      closeSearchTab(btn.dataset.close);
+    });
+  });
+}
+
+// アクティブなタブの検索結果を計算して描画する（タブがなければ案内文のみ）
+function renderSearchResults(){
+  const resultsEl = document.getElementById("searchResults");
   const scenarioIds = Object.keys(db.scenarios);
+
   if(scenarioIds.length === 0){
     resultsEl.innerHTML = '<div class="empty-state">シナリオが読み込まれていません。</div>';
     return;
   }
-  if(q === ""){
-    resultsEl.innerHTML = '<div class="result-count">話者名を入力するか、上のタグから選んでください。（登録済みの全シナリオが対象です）</div>';
+
+  const tab = searchTabs.find(t=>t.id===activeSearchTabId);
+  if(!tab){
+    resultsEl.innerHTML = '<div class="result-count">上のフォームで①検索対象を選び、②話者名（ト書きの場合は不要）、③シナリオ名フィルター（任意）を入力してから「検索」ボタンを押すとタブが開きます。複数のタブを開いて見比べられます。</div>';
     return;
   }
 
-  // シナリオ名でソートしつつ、全シナリオを横断して検索
-  const sortedIds = scenarioIds.sort((a,b)=>db.scenarios[a].name.localeCompare(db.scenarios[b].name,'ja'));
+  // シナリオ名フィルターがあれば、まず対象シナリオを絞り込む
+  const scenarioFilter = tab.scenarioFilter || "";
+  const filteredIds = scenarioFilter
+    ? scenarioIds.filter(sid => db.scenarios[sid].name.includes(scenarioFilter))
+    : scenarioIds;
+
+  const sortedIds = filteredIds.sort((a,b)=>db.scenarios[a].name.localeCompare(db.scenarios[b].name,'ja'));
   const matched = []; // { scenarioId, scenarioName, idx, speaker, text }
+
   for(const sid of sortedIds){
     const sc = db.scenarios[sid];
     sc.lines.forEach((l, idx)=>{
-      if(l.speaker !== "" && l.speaker.includes(q)){
-        matched.push({ scenarioId: sid, scenarioName: sc.name, idx, speaker: l.speaker, text: l.text });
+      if(tab.kind === "speaker"){
+        if(l.speaker !== "" && l.speaker.includes(tab.query)){
+          matched.push({ scenarioId: sid, scenarioName: sc.name, idx, speaker: l.speaker, text: l.text });
+        }
+      } else if(tab.kind === "tobira"){
+        if(l.speaker === "" && isPlainTobira(l.text)){
+          matched.push({ scenarioId: sid, scenarioName: sc.name, idx, speaker: "", text: l.text });
+        }
       }
     });
   }
 
+  const baseLabel = tab.kind === "tobira" ? "ト書き" : `「${escapeHtml(tab.query)}」`;
+  const filterLabel = scenarioFilter ? `（シナリオ名に「${escapeHtml(scenarioFilter)}」を含むものに絞り込み中）` : "";
+
+  if(sortedIds.length === 0){
+    resultsEl.innerHTML = `<div class="result-count">シナリオ名に「${escapeHtml(scenarioFilter)}」を含むシナリオが見つかりませんでした。</div>`;
+    return;
+  }
+
   if(matched.length === 0){
-    resultsEl.innerHTML = `<div class="result-count">「${escapeHtml(q)}」に一致する話者の台詞は、登録済みの全シナリオ内に見つかりませんでした。</div>`;
+    resultsEl.innerHTML = `<div class="result-count">${baseLabel}に一致する内容は見つかりませんでした。${filterLabel}</div>`;
     return;
   }
 
   const scenarioCount = new Set(matched.map(m=>m.scenarioId)).size;
-  const html = [`<div class="result-count">${matched.length}件ヒット（${scenarioCount}シナリオ中）</div>`];
+  const html = [`<div class="result-count">${matched.length}件ヒット（${scenarioCount}シナリオ中）${filterLabel}</div>`];
   let lastScenarioId = null;
   for(const m of matched){
     if(m.scenarioId !== lastScenarioId){
       html.push(`<div class="result-scenario-header">${escapeHtml(m.scenarioName)}</div>`);
       lastScenarioId = m.scenarioId;
     }
-    html.push(`<div class="result-line" data-scenario-id="${escapeAttr(m.scenarioId)}"><span class="idx">#${m.idx+1}</span><span class="speaker">${escapeHtml(m.speaker)}</span><br><span class="text">${escapeHtml(m.text)}</span></div>`);
+    const speakerHtml = m.speaker ? `<span class="speaker">${escapeHtml(m.speaker)}</span><br>` : "";
+    html.push(`<div class="result-line" data-scenario-id="${escapeAttr(m.scenarioId)}"><span class="idx">#${m.idx+1}</span>${speakerHtml}<span class="text">${escapeHtml(m.text)}</span></div>`);
   }
   resultsEl.innerHTML = html.join("");
 
@@ -1120,6 +1361,18 @@ function runSearch(){
   });
 }
 
+function renderSearchView(){
+  renderChips();
+  renderScenarioFilterCandidates();
+  renderSearchTabBar();
+  renderSearchResults();
+}
+
+// 後方互換のため：既存コードから呼ばれても新方式に委譲する
+function runSearch(){
+  renderSearchView();
+}
+
 function renderCurrentScenarioLabel(){
   const label = document.getElementById("currentScenarioLabel");
   const sc = currentScenario();
@@ -1134,8 +1387,7 @@ function renderCurrentScenarioLabel(){
 
 function renderAll(){
   renderScript();
-  renderChips();
-  runSearch();
+  renderSearchView();
   renderCurrentScenarioLabel();
 }
 
@@ -1222,14 +1474,78 @@ document.querySelectorAll(".tab").forEach(tab=>{
   });
 });
 
-document.getElementById("searchInput").addEventListener("input", runSearch);
-document.getElementById("btnClearSearch").addEventListener("click", ()=>{
-  document.getElementById("searchInput").value = "";
-  runSearch();
+// --- 検索フォーム：①検索対象 → ②話者名（対象が話者のときのみ）→ ③シナリオ名フィルター（任意）
+// を自由に埋めてから、「検索」ボタン（またはどちらかの欄でのEnter）を押した瞬間だけタブが1つ作られる。
+// 入力途中や片方しか埋めていない状態では何も起きないので、"先に片方を入れないと絞り込みが無視される"事故が起きない。
+
+function updateSpeakerRowEnabled(){
+  const kind = document.getElementById("searchKindSelect").value;
+  const row = document.getElementById("speakerQueryRow");
+  if(kind === "tobira"){
+    row.classList.add("disabled");
+  } else {
+    row.classList.remove("disabled");
+  }
+}
+
+function submitSearchForm(){
+  const kind = document.getElementById("searchKindSelect").value;
+  const filter = document.getElementById("scenarioFilterInput").value.trim();
+
+  if(kind === "speaker"){
+    const q = document.getElementById("searchInput").value.trim();
+    if(q === ""){
+      alert("話者名を入力してください。");
+      return;
+    }
+    addSearchTab("speaker", q, filter);
+  } else {
+    addSearchTab("tobira", "", filter);
+  }
+}
+
+document.getElementById("searchKindSelect").addEventListener("change", updateSpeakerRowEnabled);
+updateSpeakerRowEnabled();
+
+document.getElementById("btnRunSearch").addEventListener("click", submitSearchForm);
+
+// どちらの入力欄でも、Enterで検索を確定できるようにする（ただし自動発火はしない＝ボタンと同じ挙動）
+document.getElementById("searchInput").addEventListener("keydown", (e)=>{
+  if(e.key === "Enter") submitSearchForm();
+});
+document.getElementById("scenarioFilterInput").addEventListener("keydown", (e)=>{
+  if(e.key === "Enter") submitSearchForm();
 });
 
 // --- サイドバー幅リサイズ ---
 // --- サイドバー全体への外部CSVファイルドラッグ時のハイライト ---
+// --- ライト/ダークモード切り替え ---
+(function initThemeToggle(){
+  const btn = document.getElementById("btnToggleTheme");
+  const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+
+  function applyThemeButtonState(){
+    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+    btn.textContent = isDark ? "☀️" : "🌙";
+    btn.title = isDark ? "ライトモードに切り替え" : "ダークモードに切り替え";
+    if(themeColorMeta) themeColorMeta.setAttribute("content", isDark ? "#181a20" : "#ffffff");
+  }
+
+  btn.addEventListener("click", ()=>{
+    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+    if(isDark){
+      document.documentElement.removeAttribute("data-theme");
+      localStorage.setItem("theme", "light");
+    } else {
+      document.documentElement.setAttribute("data-theme", "dark");
+      localStorage.setItem("theme", "dark");
+    }
+    applyThemeButtonState();
+  });
+
+  applyThemeButtonState();
+})();
+
 (function initSidebarFileDragHighlight(){
   const sidebar = document.getElementById("sidebar");
 
