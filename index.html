@@ -102,6 +102,15 @@
     overflow:hidden;
     display:flex;
   }
+  /* ハンバーガーメニューボタン（デフォルト非表示、モバイル幅で表示） */
+  .sidebar-toggle-btn{
+    display:none;
+    font-size:18px;
+    padding:6px 10px;
+  }
+  #sidebarOverlay{
+    display:none;
+  }
   /* サイドバー */
   #sidebarWrap{
     display:flex;
@@ -634,11 +643,48 @@
     background:var(--panel2);
     color:var(--text-dim);
   }
+
+  /* モバイル幅：サイドバーをハンバーガーで開閉するオーバーレイに */
+  @media (max-width: 800px){
+    .sidebar-toggle-btn{ display:inline-block; }
+    #sidebarWrap{
+      position:fixed;
+      top:0;
+      left:0;
+      height:100%;
+      z-index:200;
+      transform:translateX(-100%);
+      transition:transform .2s ease;
+      box-shadow:2px 0 12px rgba(0,0,0,0.25);
+    }
+    #sidebarWrap.open{
+      transform:translateX(0);
+    }
+    #sidebar{
+      width:80vw;
+      max-width:320px;
+      height:100%;
+    }
+    #sidebarResizer{
+      display:none;
+    }
+    #sidebarOverlay{
+      display:none;
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,0.4);
+      z-index:150;
+    }
+    #sidebarOverlay.open{
+      display:block;
+    }
+  }
 </style>
 </head>
 <body>
 
 <header>
+  <button id="btnSidebarToggle" class="sidebar-toggle-btn" title="サイドバーの開閉" aria-label="メニュー">☰</button>
   <h1>シナリオDB</h1>
   <input type="file" id="fileInput" accept=".csv" multiple>
   <span style="flex:1"></span>
@@ -650,6 +696,7 @@
 </header>
 
 <main>
+  <div id="sidebarOverlay"></div>
   <div id="sidebarWrap">
     <div id="sidebar">
       <div class="sidebar-toolbar">
@@ -1468,6 +1515,7 @@ function buildScenarioNodeDOM(id){
     await saveDB();
     renderTree();
     renderAll();
+    closeSidebarOnMobile();
   });
 
   row.querySelector('[data-act="rename"]').addEventListener("click", async (e)=>{
@@ -2011,6 +2059,31 @@ document.getElementById("btnSelectAvatarFolder").addEventListener("click", selec
     document.body.style.userSelect = "";
     localStorage.setItem("sidebarWidth", parseInt(sidebar.style.width, 10));
   });
+})();
+
+// --- モバイル幅：ハンバーガーメニューでサイドバー開閉 ---
+function isMobileWidth(){
+  return window.matchMedia("(max-width: 800px)").matches;
+}
+function openSidebarOnMobile(){
+  document.getElementById("sidebarWrap").classList.add("open");
+  document.getElementById("sidebarOverlay").classList.add("open");
+}
+function closeSidebarOnMobile(){
+  if(!isMobileWidth()) return;
+  document.getElementById("sidebarWrap").classList.remove("open");
+  document.getElementById("sidebarOverlay").classList.remove("open");
+}
+(function initSidebarToggle(){
+  document.getElementById("btnSidebarToggle").addEventListener("click", ()=>{
+    const wrap = document.getElementById("sidebarWrap");
+    if(wrap.classList.contains("open")){
+      closeSidebarOnMobile();
+    }else{
+      openSidebarOnMobile();
+    }
+  });
+  document.getElementById("sidebarOverlay").addEventListener("click", closeSidebarOnMobile);
 })();
 
 // --- init ---
