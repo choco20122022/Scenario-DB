@@ -692,6 +692,7 @@
   <button id="btnNewDB" title="新しくdb.jsonを作成する">新規DB作成</button>
   <span id="dbStatus" style="font-size:13px;font-weight:600;color:var(--text-dim);white-space:nowrap;"></span>
   <button id="btnAvatarSettings" title="話者アイコン（アバター）の設定">🖼️ アイコン設定</button>
+  <button id="btnExportViewer" title="Android等の閲覧専用アプリ用に、画像込みの閲覧用ファイルを書き出す">📱 閲覧用に書き出し</button>
   <button id="btnToggleTheme" title="ライト/ダークモード切り替え">🌙</button>
 </header>
 
@@ -1989,6 +1990,121 @@ document.getElementById("avatarModalOverlay").addEventListener("click", (e)=>{
   if(e.target.id === "avatarModalOverlay") closeAvatarModal();
 });
 document.getElementById("btnSelectAvatarFolder").addEventListener("click", selectAvatarFolder);
+
+// --- Android等の閲覧専用アプリ向けエクスポート ---
+// db全体（フォルダ構造・全シナリオ）はそのまま、実際に使用されている話者の画像だけを
+// Base64化して埋め込んだ閲覧専用ファイル（db-viewer.json）を書き出す。
+// 通常のdb.jsonとは形式・拡張子・ファイル名を分け、誤ってPC側の「DBファイルを開く」で
+// 読み込んだり、上書きしてしまったりすることがないようにしている。
+const VIEWER_EXPORT_FORMAT = "scenario-db-viewer-v1";
+
+function fileToBase64(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = () => {
+      // dataURL の "data:image/png;base64,xxxx" から先頭のヘッダー部分を除いた本体だけを取り出す
+      const result = reader.result;
+      const commaIdx = result.indexOf(",");
+      resolve(result.slice(commaIdx + 1));
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function guessMimeType(fileName){
+  const ext = (fileName.split(".").pop() || "").toLowerCase();
+  if(ext === "png") return "image/png";
+  if(ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if(ext === "gif") return "image/gif";
+  if(ext === "webp") return "image/webp";
+  if(ext === "svg") return "image/svg+xml";
+  return "application/octet-stream";
+}
+
+async function exportForViewer(){
+  const btn = document.getElementById("btnExportViewer");
+  const originalLabel = btn.textContent;
+  try{
+    btn.disabled = true;
+    btn.textContent = "書き出し準備中…";
+
+    // DB全体で実際に台詞として使われている話者名を洗い出す
+    const usedSpeakers = getSpeakerList();
+
+    // 話者名 → 画像ファイル名 の対応（手動割り当て優先、なければファイル名自動一致）
+    const speakerToFileName = {};
+    for(const sp of usedSpeakers){
+      const fileName = resolveAvatarFileName(sp);
+      if(fileName) speakerToFileName[sp] = fileName;
+    }
+
+    // 実際に使う画像ファイルだけを重複なく集める（同じ画像を複数話者で共用しているケースもあるため）
+    const neededFileNames = Array.from(new Set(Object.values(speakerToFileName)));
+
+    const avatarImages = {}; // ファイル名 -> { mime, base64 }
+    if(avatarDirHandle && neededFileNames.length > 0){
+      btn.textContent = `画像を変換中…(0/${neededFileNames.length})`;
+      let done = 0;
+      for(const fileName of neededFileNames){
+        try{
+          const fileHandle = await avatarDirHandle.getFileHandle(fileName);
+          const file = await fileHandle.getFile();
+          const base64 = await fileToBase64(file);
+          avatarImages[fileName] = { mime: guessMimeType(fileName), base64 };
+        }catch(e){
+          console.error("閲覧用エクスポート: 画像の読み込みに失敗", fileName, e);
+        }
+        done++;
+        btn.textContent = `画像を変換中…(${done}/${neededFileNames.length})`;
+      }
+    }
+
+    const exportData = {
+      format: VIEWER_EXPORT_FORMAT,
+      exportedAt: new Date().toISOString(),
+      scenarios: db.scenarios,
+      folders: db.folders,
+      speakerToFileName,
+      avatarImages
+    };
+
+    const blob = new Blob([JSON.stringify(exportData)], { type: "application/json" });
+
+    if(window.showSaveFilePicker){
+      const handle = await window.showSaveFilePicker({
+        suggestedName: "db-viewer.json",
+        types: [{ description: "シナリオDB 閲覧用ファイル", accept: { "application/json": [".json"] } }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+    } else {
+      // showSaveFilePicker非対応環境向けフォールバック（通常のダウンロード）
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "db-viewer.json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    const imageCount = Object.keys(avatarImages).length;
+    setDbStatus(`閲覧用ファイルを書き出しました（話者${usedSpeakers.length}人・画像${imageCount}件）`, "#2e7d32");
+  }catch(e){
+    if(e.name !== "AbortError"){
+      console.error("閲覧用エクスポートに失敗:", e);
+      setDbStatus("閲覧用ファイルの書き出しに失敗しました", "#c62828");
+    }
+  }finally{
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
+}
+
+document.getElementById("btnExportViewer").addEventListener("click", exportForViewer);
 
 // アプリ起動時に、前回接続していたアバターフォルダへの再接続を試みる
 (async ()=>{
