@@ -756,10 +756,10 @@
     </div>
     <div class="modal-body">
       <div class="avatar-folder-row">
-        <span id="avatarFolderStatus" class="avatar-folder-status">画像フォルダ未接続</span>
-        <button id="btnSelectAvatarFolder">📁 画像フォルダを選択</button>
+        <span id="avatarFolderStatus" class="avatar-folder-status">画像一覧未読み込み</span>
+        <button id="btnRegenerateAvatarList">🔄 image一覧を更新（PC）</button>
       </div>
-      <p class="modal-hint">あらかじめ話者ごとの画像ファイル（PNG/JPG等）を1つのフォルダにまとめておき、そのフォルダを選択してください。以後、下の一覧で話者名ごとに画像を割り当てられます。</p>
+      <p class="modal-hint">シナリオDBと同じ場所にある「image」フォルダに、話者ごとの画像ファイル（PNG/JPG等）を置いてください。画像を追加・削除したときは、PC側でこのボタンを押して一覧を更新してください（Androidなど他端末では自動で最新の一覧が読み込まれます）。話者名と同じファイル名（例：話者「田中花子」→画像「田中花子.png」）にしておけば自動的に紐付きます。名前が一致しない場合だけ、下の一覧で個別に指定してください。</p>
       <div id="avatarAssignList" class="avatar-assign-list"></div>
     </div>
   </div>
@@ -770,7 +770,7 @@
 let db = { scenarios: {}, folders: {}, currentId: null, avatars: {} };
 // scenarios: { id: { name, lines: [{speaker, text}], parentId, order } }
 // folders:   { id: { name, parentId, expanded, order } }
-// avatars:   { 話者名: ファイル名 }  ※画像ファイル自体はavatarDirHandleが指すフォルダに置かれる
+// avatars:   { 話者名: ファイル名 }  ※画像ファイル自体はindex.htmlと同じ場所の image フォルダに置かれる
 // parentId === null はルート直下
 // order は同じ階層（同じparentId）内での並び順（小さいほど上）
 
@@ -829,11 +829,9 @@ async function reorderWithinParent(parentId, movingType, movingId, targetType, t
 }
 
 let dbFileHandle = null; // FileSystemFileHandle for db.json
-let avatarDirHandle = null; // FileSystemDirectoryHandle for アバター画像フォルダ
 const HANDLE_DB_NAME = "scenarioDB_handles";
 const HANDLE_STORE = "handles";
 const HANDLE_KEY = "dbFileHandle";
-const AVATAR_DIR_HANDLE_KEY = "avatarDirHandle";
 
 function idbOpen(){
   return new Promise((resolve, reject)=>{
@@ -972,11 +970,16 @@ async function saveDB(){
 }
 
 // --- 話者アイコン（アバター）機能 ---
-// avatarDirHandle が指すフォルダの中の画像ファイルを、話者名と紐づけて表示する。
+// index.html と同じ場所にある「image」フォルダの中の画像ファイルを、話者名と紐づけて表示する。
 // 画像バイナリ自体はdb.jsonに入れず、フォルダの中のファイルとして扱う（db.jsonが肥大化しないようにするため）。
+// フォルダの中身一覧は image/list.json （ファイル名文字列の配列）として持ち、相対パスの fetch で読み込む。
+// これによりPCだけでなくAndroid等（File System Access API非対応環境）でも同じ画像が表示される。
+// list.json 自体はPC側の「image一覧を更新」ボタンで、image フォルダの中身をスキャンして書き出す。
 const IMAGE_EXT_REGEX = /\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i;
-let avatarImageUrlCache = new Map(); // ファイル名 -> objectURL（フォルダ選択のたびに作り直す）
-let avatarFileNamesCache = []; // フォルダ内の画像ファイル名一覧
+const AVATAR_IMAGE_DIR = "image"; // index.html から見た相対パス
+const AVATAR_LIST_JSON_PATH = AVATAR_IMAGE_DIR + "/list.json";
+let avatarFileNamesCache = []; // image/list.json から読み込んだ画像ファイル名一覧
+let avatarListLoaded = false; // list.json の読み込みを試みたかどうか
 
 async function ensureAvatarFolderPermission(handle){
   const opts = { mode: "read" };
@@ -985,67 +988,57 @@ async function ensureAvatarFolderPermission(handle){
   return false;
 }
 
-async function selectAvatarFolder(){
+// PC側専用：image フォルダを選び直してもらい、その中身一覧を image/list.json として書き出す
+async function regenerateAvatarList(){
   if(!window.showDirectoryPicker){
-    alert("お使いのブラウザはフォルダ選択に対応していません。Chrome または Edge をご利用ください。");
+    alert("この操作はPC版のChromeまたはEdgeでのみ行えます。「image」フォルダに画像を置いたら、PCでこのボタンを押して一覧を更新してください。");
     return;
   }
   try{
-    const handle = await window.showDirectoryPicker({ mode: "read" });
-    if(!(await ensureAvatarFolderPermission(handle))) return;
-    avatarDirHandle = handle;
-    await idbSetHandle(handle, AVATAR_DIR_HANDLE_KEY);
-    await refreshAvatarFileList();
+    const dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+    if(!(await ensureAvatarFolderPermission(dirHandle))) return;
+    const names = [];
+    for await (const [name, entryHandle] of dirHandle.entries()){
+      if(entryHandle.kind === "file" && IMAGE_EXT_REGEX.test(name) && name !== "list.json"){
+        names.push(name);
+      }
+    }
+    names.sort((a,b)=>a.localeCompare(b,'ja'));
+    const listFileHandle = await dirHandle.getFileHandle("list.json", { create: true });
+    const writable = await listFileHandle.createWritable();
+    await writable.write(JSON.stringify(names, null, 2));
+    await writable.close();
+    avatarFileNamesCache = names;
+    avatarListLoaded = true;
     renderAvatarModal();
     renderScript(); // アイコン表示に反映
     renderSearchResults();
+    alert(`image一覧を更新しました（画像 ${names.length} 件）。選んだフォルダは、必ずシナリオDBと同じ場所の「image」フォルダにしてください。`);
   }catch(e){
     if(e.name !== "AbortError") console.error(e);
   }
 }
 
-async function tryReconnectAvatarFolder(){
+// image/list.json を fetch で読み込む（PC・Android問わず共通の読み込み経路）
+async function loadAvatarList(){
   try{
-    const handle = await idbGetHandle(AVATAR_DIR_HANDLE_KEY);
-    if(!handle) return false;
-    if((await handle.queryPermission({mode:"read"})) !== "granted") return false; // 権限切れは黙ってスキップ（明示的な再選択で復帰）
-    avatarDirHandle = handle;
-    await refreshAvatarFileList();
+    const res = await fetch(AVATAR_LIST_JSON_PATH, { cache: "no-store" });
+    if(!res.ok){ avatarFileNamesCache = []; return false; }
+    const names = await res.json();
+    avatarFileNamesCache = Array.isArray(names) ? names : [];
     return true;
   }catch(e){
-    console.error(e);
+    avatarFileNamesCache = [];
     return false;
+  }finally{
+    avatarListLoaded = true;
   }
 }
 
-// フォルダ内の画像ファイル名一覧を読み直し、既存のobjectURLキャッシュは破棄する
-async function refreshAvatarFileList(){
-  for(const url of avatarImageUrlCache.values()) URL.revokeObjectURL(url);
-  avatarImageUrlCache.clear();
-  avatarFileNamesCache = [];
-  if(!avatarDirHandle) return;
-  for await (const [name, entryHandle] of avatarDirHandle.entries()){
-    if(entryHandle.kind === "file" && IMAGE_EXT_REGEX.test(name)){
-      avatarFileNamesCache.push(name);
-    }
-  }
-  avatarFileNamesCache.sort((a,b)=>a.localeCompare(b,'ja'));
-}
-
-// 指定ファイル名の画像を表示用URLとして取得する（初回のみ読み込み、以後はキャッシュを再利用）
-async function getAvatarImageUrl(fileName){
-  if(!avatarDirHandle || !fileName) return null;
-  if(avatarImageUrlCache.has(fileName)) return avatarImageUrlCache.get(fileName);
-  try{
-    const fileHandle = await avatarDirHandle.getFileHandle(fileName);
-    const file = await fileHandle.getFile();
-    const url = URL.createObjectURL(file);
-    avatarImageUrlCache.set(fileName, url);
-    return url;
-  }catch(e){
-    console.error("アバター画像の読み込みに失敗:", fileName, e);
-    return null;
-  }
+// 指定ファイル名の画像を表示用URL（相対パス）として取得する
+function getAvatarImageUrl(fileName){
+  if(!fileName) return null;
+  return AVATAR_IMAGE_DIR + "/" + encodeURIComponent(fileName);
 }
 
 // 話者名からアイコンのHTML断片を生成する（<img>タグ or イニシャルのプレースホルダー）
@@ -1066,25 +1059,22 @@ function resolveAvatarFileName(speaker){
 }
 
 // 描画済みDOM内の data-avatar-for を持つ要素を見つけ、画像が割り当てられていれば差し替える
-async function hydrateAvatarImages(containerEl){
-  if(!avatarDirHandle) return;
+function hydrateAvatarImages(containerEl){
+  if(!avatarListLoaded || avatarFileNamesCache.length === 0) return;
   const placeholders = containerEl.querySelectorAll("[data-avatar-for]");
-  const jobs = [];
   for(const el of placeholders){
     const speaker = el.dataset.avatarFor;
     const fileName = resolveAvatarFileName(speaker);
     if(!fileName) continue;
-    jobs.push((async ()=>{
-      const url = await getAvatarImageUrl(fileName);
-      if(!url) return;
-      const img = document.createElement("img");
-      img.className = el.className.replace("speaker-avatar-placeholder", "speaker-avatar");
-      img.src = url;
-      img.alt = speaker;
-      el.replaceWith(img);
-    })());
+    const url = getAvatarImageUrl(fileName);
+    if(!url) continue;
+    const img = document.createElement("img");
+    img.className = el.className.replace("speaker-avatar-placeholder", "speaker-avatar");
+    img.src = url;
+    img.alt = speaker;
+    img.onerror = ()=>{ img.replaceWith(document.createRange().createContextualFragment(speakerAvatarPlaceholderHtml(speaker))); };
+    el.replaceWith(img);
   }
-  await Promise.all(jobs);
 }
 
 // --- アバター設定モーダル ---
@@ -1098,9 +1088,11 @@ function closeAvatarModal(){
 
 function renderAvatarModal(){
   const statusEl = document.getElementById("avatarFolderStatus");
-  statusEl.textContent = avatarDirHandle
-    ? `接続中: ${avatarDirHandle.name}（画像 ${avatarFileNamesCache.length} 件）`
-    : "画像フォルダ未接続";
+  statusEl.textContent = !avatarListLoaded
+    ? "画像一覧を読み込み中…"
+    : avatarFileNamesCache.length > 0
+      ? `image フォルダの画像 ${avatarFileNamesCache.length} 件を読み込み済み`
+      : "image フォルダの画像が見つかりません（list.json が未生成、または image フォルダが空です）";
 
   const listEl = document.getElementById("avatarAssignList");
   const speakers = getSpeakerList();
@@ -1108,8 +1100,8 @@ function renderAvatarModal(){
     listEl.innerHTML = '<div class="modal-hint">まだ話者が登録されているシナリオがありません。</div>';
     return;
   }
-  if(!avatarDirHandle){
-    listEl.innerHTML = '<div class="modal-hint">先に画像フォルダを選択してください。<br>話者名と同じファイル名（例：話者「田中花子」→画像「田中花子.png」）にしておけば、フォルダを選ぶだけで自動的にすべて紐付きます。名前が一致しない場合だけ、下の一覧で個別に指定してください。</div>';
+  if(avatarFileNamesCache.length === 0){
+    listEl.innerHTML = '<div class="modal-hint">シナリオDBと同じ場所にある「image」フォルダに画像を置き、上の「image一覧を更新」ボタン（PCのみ）を押してください。<br>話者名と同じファイル名（例：話者「田中花子」→画像「田中花子.png」）にしておけば自動的にすべて紐付きます。名前が一致しない場合だけ、下の一覧で個別に指定してください。</div>';
     return;
   }
 
@@ -1988,11 +1980,11 @@ document.getElementById("btnCloseAvatarModal").addEventListener("click", closeAv
 document.getElementById("avatarModalOverlay").addEventListener("click", (e)=>{
   if(e.target.id === "avatarModalOverlay") closeAvatarModal();
 });
-document.getElementById("btnSelectAvatarFolder").addEventListener("click", selectAvatarFolder);
+document.getElementById("btnRegenerateAvatarList").addEventListener("click", regenerateAvatarList);
 
-// アプリ起動時に、前回接続していたアバターフォルダへの再接続を試みる
+// アプリ起動時に、image/list.json を読み込む（PC・Android共通）
 (async ()=>{
-  await tryReconnectAvatarFolder();
+  await loadAvatarList();
   renderScript();
   renderSearchResults();
 })();
