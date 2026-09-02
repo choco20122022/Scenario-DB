@@ -286,6 +286,19 @@
     margin-bottom:4px;
     letter-spacing:0.03em;
   }
+  .line-with-avatar{
+    display:flex;
+    align-items:center;
+    gap:0;
+  }
+  .line-with-avatar .speaker-avatar,
+  .line-with-avatar .speaker-avatar-placeholder{
+    flex-shrink:0;
+  }
+  .line-body{
+    flex:1;
+    min-width:0;
+  }
   .line .text{
     white-space:pre-wrap;
     color:var(--text);
@@ -324,6 +337,15 @@
     background:var(--accent-bg);
     border-radius:4px;
     padding:2px 6px;
+  }
+  /* 検索結果からジャンプした際に該当行を一瞬目立たせる */
+  .line.jump-highlight{
+    animation: jumpHighlightFade 2s ease-out;
+  }
+  @keyframes jumpHighlightFade{
+    0%   { background: var(--accent-bg); border-radius:6px; }
+    70%  { background: var(--accent-bg); border-radius:6px; }
+    100% { background: transparent; }
   }
   /* 検索表示 */
   .search-form{
@@ -474,6 +496,144 @@
   }
   ::-webkit-scrollbar{ width:10px; }
   ::-webkit-scrollbar-thumb{ background:var(--border); border-radius:5px; }
+
+  /* 話者アイコン（アバター） */
+  .speaker-avatar{
+    display:inline-block;
+    width:56px;
+    height:56px;
+    border-radius:50%;
+    object-fit:cover;
+    vertical-align:middle;
+    margin-right:12px;
+    background:var(--panel2);
+    border:2px solid var(--border);
+  }
+  .speaker-avatar-placeholder{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:56px;
+    height:56px;
+    border-radius:50%;
+    background:var(--panel2);
+    border:2px solid var(--border);
+    color:var(--text-dim);
+    font-size:22px;
+    font-weight:700;
+    vertical-align:middle;
+    margin-right:12px;
+  }
+  /* 話者アイコンのサイズは全体表示・検索結果で統一（.speaker-avatar / .speaker-avatar-placeholder の値をそのまま使う） */
+
+  /* アバター設定モーダル */
+  .modal-overlay{
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.5);
+    z-index:1000;
+    align-items:center;
+    justify-content:center;
+  }
+  .modal-overlay.open{
+    display:flex;
+  }
+  .modal-box{
+    background:var(--panel);
+    border-radius:12px;
+    width:min(640px, 90vw);
+    max-height:85vh;
+    display:flex;
+    flex-direction:column;
+    box-shadow:0 8px 30px rgba(0,0,0,0.3);
+  }
+  .modal-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:16px 20px;
+    border-bottom:1px solid var(--border);
+  }
+  .modal-header h2{
+    font-size:16px;
+    margin:0;
+    color:var(--text);
+  }
+  .modal-close-btn{
+    border:none;
+    background:transparent;
+    font-size:20px;
+    line-height:1;
+    padding:2px 8px;
+    color:var(--text-dim);
+  }
+  .modal-close-btn:hover{
+    background:var(--panel2);
+    color:var(--text);
+  }
+  .modal-body{
+    padding:16px 20px;
+    overflow-y:auto;
+  }
+  .modal-hint{
+    font-size:12px;
+    color:var(--text-dim);
+    margin:4px 0 16px;
+    line-height:1.6;
+  }
+  .avatar-folder-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:8px;
+  }
+  .avatar-folder-status{
+    font-size:13px;
+    font-weight:600;
+    color:var(--text-dim);
+  }
+  .avatar-assign-list{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+  .avatar-assign-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:8px;
+    border:1px solid var(--border);
+    border-radius:8px;
+  }
+  .avatar-assign-row .speaker-name{
+    flex:1;
+    font-size:14px;
+    font-weight:600;
+    color:var(--text);
+  }
+  .avatar-assign-row select{
+    max-width:200px;
+  }
+  .avatar-status-badge{
+    font-size:11px;
+    font-weight:700;
+    padding:2px 8px;
+    border-radius:10px;
+    white-space:nowrap;
+  }
+  .avatar-status-badge.auto{
+    background:var(--accent-bg);
+    color:var(--accent);
+  }
+  .avatar-status-badge.manual{
+    background:var(--meta-bg);
+    color:var(--meta);
+  }
+  .avatar-status-badge.none{
+    background:var(--panel2);
+    color:var(--text-dim);
+  }
 </style>
 </head>
 <body>
@@ -485,6 +645,7 @@
   <button id="btnOpenDB" title="既存のdb.jsonを開く">DBファイルを開く</button>
   <button id="btnNewDB" title="新しくdb.jsonを作成する">新規DB作成</button>
   <span id="dbStatus" style="font-size:13px;font-weight:600;color:var(--text-dim);white-space:nowrap;"></span>
+  <button id="btnAvatarSettings" title="話者アイコン（アバター）の設定">🖼️ アイコン設定</button>
   <button id="btnToggleTheme" title="ライト/ダークモード切り替え">🌙</button>
 </header>
 
@@ -540,16 +701,35 @@
   </div>
 </main>
 
+<div id="avatarModalOverlay" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>話者アイコン（アバター）の設定</h2>
+      <button id="btnCloseAvatarModal" class="modal-close-btn" title="閉じる">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="avatar-folder-row">
+        <span id="avatarFolderStatus" class="avatar-folder-status">画像フォルダ未接続</span>
+        <button id="btnSelectAvatarFolder">📁 画像フォルダを選択</button>
+      </div>
+      <p class="modal-hint">あらかじめ話者ごとの画像ファイル（PNG/JPG等）を1つのフォルダにまとめておき、そのフォルダを選択してください。以後、下の一覧で話者名ごとに画像を割り当てられます。</p>
+      <div id="avatarAssignList" class="avatar-assign-list"></div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-let db = { scenarios: {}, folders: {}, currentId: null };
+let db = { scenarios: {}, folders: {}, currentId: null, avatars: {} };
 // scenarios: { id: { name, lines: [{speaker, text}], parentId, order } }
 // folders:   { id: { name, parentId, expanded, order } }
+// avatars:   { 話者名: ファイル名 }  ※画像ファイル自体はavatarDirHandleが指すフォルダに置かれる
 // parentId === null はルート直下
 // order は同じ階層（同じparentId）内での並び順（小さいほど上）
 
 function migrateDB(){
   if(!db.folders) db.folders = {};
+  if(!db.avatars) db.avatars = {};
   let nextOrder = 0;
   for(const id of Object.keys(db.folders)){
     if(db.folders[id].parentId === undefined) db.folders[id].parentId = null;
@@ -602,9 +782,11 @@ async function reorderWithinParent(parentId, movingType, movingId, targetType, t
 }
 
 let dbFileHandle = null; // FileSystemFileHandle for db.json
+let avatarDirHandle = null; // FileSystemDirectoryHandle for アバター画像フォルダ
 const HANDLE_DB_NAME = "scenarioDB_handles";
 const HANDLE_STORE = "handles";
 const HANDLE_KEY = "dbFileHandle";
+const AVATAR_DIR_HANDLE_KEY = "avatarDirHandle";
 
 function idbOpen(){
   return new Promise((resolve, reject)=>{
@@ -614,20 +796,20 @@ function idbOpen(){
     req.onerror = ()=>reject(req.error);
   });
 }
-async function idbSetHandle(handle){
+async function idbSetHandle(handle, key){
   const idb = await idbOpen();
   return new Promise((resolve, reject)=>{
     const tx = idb.transaction(HANDLE_STORE, "readwrite");
-    tx.objectStore(HANDLE_STORE).put(handle, HANDLE_KEY);
+    tx.objectStore(HANDLE_STORE).put(handle, key || HANDLE_KEY);
     tx.oncomplete = ()=>resolve();
     tx.onerror = ()=>reject(tx.error);
   });
 }
-async function idbGetHandle(){
+async function idbGetHandle(key){
   const idb = await idbOpen();
   return new Promise((resolve, reject)=>{
     const tx = idb.transaction(HANDLE_STORE, "readonly");
-    const req = tx.objectStore(HANDLE_STORE).get(HANDLE_KEY);
+    const req = tx.objectStore(HANDLE_STORE).get(key || HANDLE_KEY);
     req.onsuccess = ()=>resolve(req.result || null);
     req.onerror = ()=>reject(req.error);
   });
@@ -684,7 +866,7 @@ async function createNewDB(){
       types: [{ description: "シナリオDB", accept: { "application/json": [".json"] } }]
     });
     if(!(await ensurePermission(handle))) return;
-    db = { scenarios: {}, folders: {}, currentId: null };
+    db = { scenarios: {}, folders: {}, currentId: null, avatars: {} };
     dbFileHandle = handle;
     await idbSetHandle(handle);
     await saveDB();
@@ -740,6 +922,196 @@ async function saveDB(){
     setDbStatus("✗ 保存に失敗しました: " + e.message, "#c62828");
     alert("保存に失敗しました: " + e.message);
   }
+}
+
+// --- 話者アイコン（アバター）機能 ---
+// avatarDirHandle が指すフォルダの中の画像ファイルを、話者名と紐づけて表示する。
+// 画像バイナリ自体はdb.jsonに入れず、フォルダの中のファイルとして扱う（db.jsonが肥大化しないようにするため）。
+const IMAGE_EXT_REGEX = /\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i;
+let avatarImageUrlCache = new Map(); // ファイル名 -> objectURL（フォルダ選択のたびに作り直す）
+let avatarFileNamesCache = []; // フォルダ内の画像ファイル名一覧
+
+async function ensureAvatarFolderPermission(handle){
+  const opts = { mode: "read" };
+  if((await handle.queryPermission(opts)) === "granted") return true;
+  if((await handle.requestPermission(opts)) === "granted") return true;
+  return false;
+}
+
+async function selectAvatarFolder(){
+  if(!window.showDirectoryPicker){
+    alert("お使いのブラウザはフォルダ選択に対応していません。Chrome または Edge をご利用ください。");
+    return;
+  }
+  try{
+    const handle = await window.showDirectoryPicker({ mode: "read" });
+    if(!(await ensureAvatarFolderPermission(handle))) return;
+    avatarDirHandle = handle;
+    await idbSetHandle(handle, AVATAR_DIR_HANDLE_KEY);
+    await refreshAvatarFileList();
+    renderAvatarModal();
+    renderScript(); // アイコン表示に反映
+    renderSearchResults();
+  }catch(e){
+    if(e.name !== "AbortError") console.error(e);
+  }
+}
+
+async function tryReconnectAvatarFolder(){
+  try{
+    const handle = await idbGetHandle(AVATAR_DIR_HANDLE_KEY);
+    if(!handle) return false;
+    if((await handle.queryPermission({mode:"read"})) !== "granted") return false; // 権限切れは黙ってスキップ（明示的な再選択で復帰）
+    avatarDirHandle = handle;
+    await refreshAvatarFileList();
+    return true;
+  }catch(e){
+    console.error(e);
+    return false;
+  }
+}
+
+// フォルダ内の画像ファイル名一覧を読み直し、既存のobjectURLキャッシュは破棄する
+async function refreshAvatarFileList(){
+  for(const url of avatarImageUrlCache.values()) URL.revokeObjectURL(url);
+  avatarImageUrlCache.clear();
+  avatarFileNamesCache = [];
+  if(!avatarDirHandle) return;
+  for await (const [name, entryHandle] of avatarDirHandle.entries()){
+    if(entryHandle.kind === "file" && IMAGE_EXT_REGEX.test(name)){
+      avatarFileNamesCache.push(name);
+    }
+  }
+  avatarFileNamesCache.sort((a,b)=>a.localeCompare(b,'ja'));
+}
+
+// 指定ファイル名の画像を表示用URLとして取得する（初回のみ読み込み、以後はキャッシュを再利用）
+async function getAvatarImageUrl(fileName){
+  if(!avatarDirHandle || !fileName) return null;
+  if(avatarImageUrlCache.has(fileName)) return avatarImageUrlCache.get(fileName);
+  try{
+    const fileHandle = await avatarDirHandle.getFileHandle(fileName);
+    const file = await fileHandle.getFile();
+    const url = URL.createObjectURL(file);
+    avatarImageUrlCache.set(fileName, url);
+    return url;
+  }catch(e){
+    console.error("アバター画像の読み込みに失敗:", fileName, e);
+    return null;
+  }
+}
+
+// 話者名からアイコンのHTML断片を生成する（<img>タグ or イニシャルのプレースホルダー）
+// 非同期で画像を差し込むため、まずプレースホルダーを返し、読み込めたら後から差し替える
+function speakerAvatarPlaceholderHtml(speaker, sizeClass){
+  const initial = speaker ? speaker.charAt(0) : "?";
+  return `<span class="speaker-avatar-placeholder" data-avatar-for="${escapeAttr(speaker)}">${escapeHtml(initial)}</span>`;
+}
+
+// 話者名に対応する画像ファイル名を決定する。
+// 1. db.avatars に明示的な割り当てがあればそれを最優先（ファイル名が話者名と一致しない例外ケース用）
+// 2. なければ、拡張子を除いたファイル名が話者名と完全一致するファイルを自動で探す
+//    （「田中花子」という話者に対して「田中花子.png」というファイルを置くだけで、モーダル操作なしに自動反映される）
+function resolveAvatarFileName(speaker){
+  if(db.avatars[speaker]) return db.avatars[speaker];
+  const found = avatarFileNamesCache.find(f => f.replace(IMAGE_EXT_REGEX, "") === speaker);
+  return found || null;
+}
+
+// 描画済みDOM内の data-avatar-for を持つ要素を見つけ、画像が割り当てられていれば差し替える
+async function hydrateAvatarImages(containerEl){
+  if(!avatarDirHandle) return;
+  const placeholders = containerEl.querySelectorAll("[data-avatar-for]");
+  const jobs = [];
+  for(const el of placeholders){
+    const speaker = el.dataset.avatarFor;
+    const fileName = resolveAvatarFileName(speaker);
+    if(!fileName) continue;
+    jobs.push((async ()=>{
+      const url = await getAvatarImageUrl(fileName);
+      if(!url) return;
+      const img = document.createElement("img");
+      img.className = el.className.replace("speaker-avatar-placeholder", "speaker-avatar");
+      img.src = url;
+      img.alt = speaker;
+      el.replaceWith(img);
+    })());
+  }
+  await Promise.all(jobs);
+}
+
+// --- アバター設定モーダル ---
+function openAvatarModal(){
+  document.getElementById("avatarModalOverlay").classList.add("open");
+  renderAvatarModal();
+}
+function closeAvatarModal(){
+  document.getElementById("avatarModalOverlay").classList.remove("open");
+}
+
+function renderAvatarModal(){
+  const statusEl = document.getElementById("avatarFolderStatus");
+  statusEl.textContent = avatarDirHandle
+    ? `接続中: ${avatarDirHandle.name}（画像 ${avatarFileNamesCache.length} 件）`
+    : "画像フォルダ未接続";
+
+  const listEl = document.getElementById("avatarAssignList");
+  const speakers = getSpeakerList();
+  if(speakers.length === 0){
+    listEl.innerHTML = '<div class="modal-hint">まだ話者が登録されているシナリオがありません。</div>';
+    return;
+  }
+  if(!avatarDirHandle){
+    listEl.innerHTML = '<div class="modal-hint">先に画像フォルダを選択してください。<br>話者名と同じファイル名（例：話者「田中花子」→画像「田中花子.png」）にしておけば、フォルダを選ぶだけで自動的にすべて紐付きます。名前が一致しない場合だけ、下の一覧で個別に指定してください。</div>';
+    return;
+  }
+
+  const autoMatched = speakers.filter(sp => !db.avatars[sp] && resolveAvatarFileName(sp));
+  const unmatched = speakers.filter(sp => !db.avatars[sp] && !resolveAvatarFileName(sp));
+  const manuallySet = speakers.filter(sp => db.avatars[sp]);
+
+  const summaryHtml = `<div class="modal-hint">
+    自動で一致：${autoMatched.length}人　/　手動設定：${manuallySet.length}人　/　未設定：${unmatched.length}人<br>
+    ファイル名が話者名と一致していれば自動でアイコンが付きます。個別に変更したい場合のみ、下でファイルを選び直してください。
+  </div>`;
+
+  const optionsHtml = ['<option value="">（自動判定のまま）</option>']
+    .concat(avatarFileNamesCache.map(f => `<option value="${escapeAttr(f)}">${escapeHtml(f)}</option>`))
+    .join("");
+
+  const rowsHtml = speakers.map(sp => {
+    const auto = resolveAvatarFileName(sp);
+    const isManual = !!db.avatars[sp];
+    const statusBadge = isManual
+      ? `<span class="avatar-status-badge manual">手動: ${escapeHtml(db.avatars[sp])}</span>`
+      : auto
+        ? `<span class="avatar-status-badge auto">自動: ${escapeHtml(auto)}</span>`
+        : `<span class="avatar-status-badge none">未設定</span>`;
+    return `
+    <div class="avatar-assign-row">
+      <span class="speaker-name">${escapeHtml(sp)}</span>
+      ${statusBadge}
+      <select data-speaker="${escapeAttr(sp)}">${optionsHtml}</select>
+    </div>`;
+  }).join("");
+
+  listEl.innerHTML = summaryHtml + rowsHtml;
+
+  listEl.querySelectorAll("select").forEach(sel=>{
+    const sp = sel.dataset.speaker;
+    sel.value = db.avatars[sp] || "";
+    sel.addEventListener("change", async ()=>{
+      if(sel.value){
+        db.avatars[sp] = sel.value; // 手動指定（自動判定より優先される）
+      } else {
+        delete db.avatars[sp]; // 自動判定に戻す
+      }
+      await saveDB();
+      renderAvatarModal();
+      renderScript();
+      renderSearchResults();
+    });
+  });
 }
 
 function decodeCSVBuffer(buffer){
@@ -1125,22 +1497,33 @@ function renderScript(){
     return;
   }
   const html = ['<div class="script">'];
-  for(const l of sc.lines){
+  sc.lines.forEach((l, idx)=>{
     if(l.speaker === ""){
       const t = l.text;
       if(t.startsWith("タイトル：") || t.startsWith("タイトル:") || t.startsWith("あらすじ：") || t.startsWith("あらすじ:")){
-        html.push(`<div class="line meta"><span class="text">${escapeHtml(t)}</span></div>`);
+        html.push(`<div class="line meta" id="script-line-${idx}"><span class="text">${escapeHtml(t)}</span></div>`);
       } else if(t.startsWith("//")){
-        html.push(`<div class="line comment"><span class="text">${escapeHtml(t)}</span></div>`);
+        html.push(`<div class="line comment" id="script-line-${idx}"><span class="text">${escapeHtml(t)}</span></div>`);
       } else {
-        html.push(`<div class="line tobira"><span class="text">${escapeHtml(t)}</span></div>`);
+        html.push(`<div class="line tobira" id="script-line-${idx}"><span class="text">${escapeHtml(t)}</span></div>`);
       }
     } else {
-      html.push(`<div class="line"><span class="speaker">${escapeHtml(l.speaker)}</span><span class="text">${escapeHtml(l.text)}</span></div>`);
+      const avatarHtml = speakerAvatarPlaceholderHtml(l.speaker);
+      html.push(`<div class="line line-with-avatar" id="script-line-${idx}">${avatarHtml}<div class="line-body"><span class="speaker">${escapeHtml(l.speaker)}</span><span class="text">${escapeHtml(l.text)}</span></div></div>`);
     }
-  }
+  });
   html.push('</div>');
   container.innerHTML = html.join("");
+  hydrateAvatarImages(container);
+}
+
+// 全体表示中の指定行までスクロールし、一瞬ハイライトして視認しやすくする
+function scrollToScriptLine(idx){
+  const el = document.getElementById("script-line-" + idx);
+  if(!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.classList.add("jump-highlight");
+  setTimeout(()=> el.classList.remove("jump-highlight"), 2000);
 }
 
 function escapeHtml(s){
@@ -1340,16 +1723,19 @@ function renderSearchResults(){
       html.push(`<div class="result-scenario-header">${escapeHtml(m.scenarioName)}</div>`);
       lastScenarioId = m.scenarioId;
     }
-    const speakerHtml = m.speaker ? `<span class="speaker">${escapeHtml(m.speaker)}</span><br>` : "";
-    html.push(`<div class="result-line" data-scenario-id="${escapeAttr(m.scenarioId)}"><span class="idx">#${m.idx+1}</span>${speakerHtml}<span class="text">${escapeHtml(m.text)}</span></div>`);
+    const avatarHtml = m.speaker ? speakerAvatarPlaceholderHtml(m.speaker) : "";
+    const speakerHtml = m.speaker ? `${avatarHtml}<span class="speaker">${escapeHtml(m.speaker)}</span><br>` : "";
+    html.push(`<div class="result-line" data-scenario-id="${escapeAttr(m.scenarioId)}" data-line-idx="${m.idx}"><span class="idx">#${m.idx+1}</span>${speakerHtml}<span class="text">${escapeHtml(m.text)}</span></div>`);
   }
   resultsEl.innerHTML = html.join("");
+  hydrateAvatarImages(resultsEl);
 
-  // 結果行クリックで該当シナリオの全体表示にジャンプ
+  // 結果行クリックで該当シナリオの全体表示に切り替え、実際にその台詞がある位置までスクロールしてハイライトする
   resultsEl.querySelectorAll(".result-line").forEach(el=>{
     el.style.cursor = "pointer";
     el.addEventListener("click", async ()=>{
       const sid = el.dataset.scenarioId;
+      const lineIdx = parseInt(el.dataset.lineIdx, 10);
       if(!sid || !db.scenarios[sid]) return;
       db.currentId = sid;
       await saveDB();
@@ -1357,6 +1743,8 @@ function renderSearchResults(){
       renderScript();
       renderCurrentScenarioLabel();
       document.querySelector('.tab[data-view="viewScript"]').click();
+      // タブ切り替え・描画が完了してからスクロールする（即座だとまだ非表示でscrollIntoViewが効かないため）
+      requestAnimationFrame(()=> scrollToScriptLine(lineIdx));
     });
   });
 }
@@ -1544,6 +1932,21 @@ document.getElementById("scenarioFilterInput").addEventListener("keydown", (e)=>
   });
 
   applyThemeButtonState();
+})();
+
+// --- アバター設定モーダルの開閉・イベント ---
+document.getElementById("btnAvatarSettings").addEventListener("click", openAvatarModal);
+document.getElementById("btnCloseAvatarModal").addEventListener("click", closeAvatarModal);
+document.getElementById("avatarModalOverlay").addEventListener("click", (e)=>{
+  if(e.target.id === "avatarModalOverlay") closeAvatarModal();
+});
+document.getElementById("btnSelectAvatarFolder").addEventListener("click", selectAvatarFolder);
+
+// アプリ起動時に、前回接続していたアバターフォルダへの再接続を試みる
+(async ()=>{
+  await tryReconnectAvatarFolder();
+  renderScript();
+  renderSearchResults();
 })();
 
 (function initSidebarFileDragHighlight(){
