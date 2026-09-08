@@ -271,6 +271,26 @@
     padding:24px;
   }
   .view.active{ display:block; }
+  /* 話者検索タブ：スクロールしてもタブが隠れないよう、タブバーだけ上部に固定する */
+  .view-search.active{
+    display:flex;
+    flex-direction:column;
+    padding:0;
+    overflow:hidden;
+  }
+  .search-tab-bar-fixed{
+    flex-shrink:0;
+    padding:16px 24px 0;
+    background:var(--bg);
+  }
+  .search-tab-bar-fixed:empty{
+    padding:0;
+  }
+  .search-scroll-area{
+    flex:1;
+    overflow-y:auto;
+    padding:16px 24px 24px;
+  }
   .empty-state{
     color:var(--text-dim);
     text-align:center;
@@ -415,7 +435,11 @@
     flex-wrap:wrap;
     gap:6px;
     max-width:720px;
-    margin:0 auto 16px;
+    margin:0 auto;
+    padding-bottom:16px;
+  }
+  #searchTabBar:empty{
+    padding-bottom:0;
   }
   .search-tab{
     display:flex;
@@ -720,31 +744,33 @@
     <div id="viewScript" class="view active">
       <div id="scriptContent"><div class="empty-state">左のサイドバーからシナリオを選ぶか、<br>「CSV」ボタンで新しいシナリオを追加してください。</div></div>
     </div>
-    <div id="viewSearch" class="view">
-      <div class="search-form">
-        <div class="search-form-row">
-          <label class="search-form-label">① 検索対象</label>
-          <select id="searchKindSelect">
-            <option value="speaker">話者の台詞</option>
-            <option value="tobira">ト書き（地の文）</option>
-          </select>
+    <div id="viewSearch" class="view view-search">
+      <div id="searchTabBar" class="search-tab-bar-fixed"></div>
+      <div class="search-scroll-area">
+        <div class="search-form">
+          <div class="search-form-row">
+            <label class="search-form-label">① 検索対象</label>
+            <select id="searchKindSelect">
+              <option value="speaker">話者の台詞</option>
+              <option value="tobira">ト書き（地の文）</option>
+            </select>
+          </div>
+          <div class="search-form-row" id="speakerQueryRow">
+            <label class="search-form-label">② 話者名</label>
+            <input type="text" id="searchInput" list="speakerList" placeholder="例：田中花子（部分一致）">
+            <datalist id="speakerList"></datalist>
+          </div>
+          <div class="search-form-row">
+            <label class="search-form-label">③ シナリオ名で絞り込み<span class="optional-badge">任意</span></label>
+            <input type="text" id="scenarioFilterInput" list="scenarioFilterList" placeholder="入力中に、複数シナリオ名に共通する語が候補に出ます（空欄なら全シナリオが対象）">
+            <datalist id="scenarioFilterList"></datalist>
+          </div>
+          <div class="search-form-row">
+            <button id="btnRunSearch" class="search-run-btn">🔍 この条件でタブを開く</button>
+          </div>
         </div>
-        <div class="search-form-row" id="speakerQueryRow">
-          <label class="search-form-label">② 話者名</label>
-          <input type="text" id="searchInput" list="speakerList" placeholder="例：田中花子（部分一致）">
-          <datalist id="speakerList"></datalist>
-        </div>
-        <div class="search-form-row">
-          <label class="search-form-label">③ シナリオ名で絞り込み<span class="optional-badge">任意</span></label>
-          <input type="text" id="scenarioFilterInput" list="scenarioFilterList" placeholder="入力中に、複数シナリオ名に共通する語が候補に出ます（空欄なら全シナリオが対象）">
-          <datalist id="scenarioFilterList"></datalist>
-        </div>
-        <div class="search-form-row">
-          <button id="btnRunSearch" class="search-run-btn">🔍 この条件でタブを開く</button>
-        </div>
+        <div id="searchResults" class="search-results"></div>
       </div>
-      <div id="searchTabBar"></div>
-      <div id="searchResults" class="search-results"></div>
     </div>
   </div>
 </main>

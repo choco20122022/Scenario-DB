@@ -1,4 +1,4 @@
-const CACHE_NAME = "scenario-db-v5";
+const CACHE_NAME = "scenario-db-v6";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./icon.svg", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (e)=>{
